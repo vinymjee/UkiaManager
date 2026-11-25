@@ -4,6 +4,7 @@ node_modules/
 dist/
 ui/dist/
 ui/node_modules/
+ui/node_modules.old/
 ui/.angular/
 
 # Logs
