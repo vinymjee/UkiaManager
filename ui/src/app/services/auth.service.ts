@@ -31,7 +31,7 @@ export class AuthService {
   }
 
   async login(email: string, motDePasse: string): Promise<boolean> {
-    const res = await fetch(`${API}/auth/login`, {
+    const res = await fetch(`${API}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, motDePasse }),
@@ -46,7 +46,7 @@ export class AuthService {
   }
 
   async initSuperviseur(nom: string, email: string, motDePasse: string): Promise<boolean> {
-    const res = await fetch(`${API}/auth/init`, {
+    const res = await fetch(`${API}/api/auth/init`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nom, email, motDePasse, force: true }),

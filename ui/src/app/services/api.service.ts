@@ -18,7 +18,7 @@ export class ApiService {
   }
 
   private base(path: string): string {
-    return API + path;
+    return API + "/api" + path;
   }
 
   async get<T>(path: string, params?: Record<string, string>): Promise<{ ok: boolean; data?: T; erreur?: string }> {
