@@ -11,40 +11,90 @@ import { Utilisateur } from "../../models";
   imports: [CommonModule, FormsModule],
   template: `
     <div class="app-header">
-      <h1>Utilisateurs (agents)</h1>
-      <button class="btn btn-primary" (click)="editer(null)">Nouvel utilisateur</button>
-    </div>
-    <div class="alert alert-error" *ngIf="erreur">{{ erreur }}</div>
-    <div class="alert alert-success" *ngIf="message">{{ message }}</div>
-
-    <div class="card" *ngIf="formVisible">
-      <div class="card-title">{{ userEdite ? "Modifier" : "Nouvel" }} utilisateur</div>
-      <div class="form-row">
-        <div class="form-group"><label>Nom</label><input [(ngModel)]="user.nom" required /></div>
-        <div class="form-group"><label>Email</label><input [(ngModel)]="user.email" required /></div>
-        <div class="form-group"><label>Mot de passe</label><input [(ngModel)]="user.motDePasse" type="password" [required]="!userEdite" /></div>
-        <div class="form-group"><label>R\u00f4le</label><select [(ngModel)]="user.role"><option value="AGENT">Agent</option><option value="SUPERVISEUR">Superviseur</option></select></div>
-        <div class="form-group"><label>Actif</label><select [(ngModel)]="user.actif"><option value="true">Oui</option><option value="false">Non</option></select></div>
+      <div>
+        <h1>Utilisateurs</h1>
+        <div class="subtitle">Gestion des agents et superviseurs</div>
       </div>
-      <div class="form-actions">
-        <button class="btn btn-success" (click)="enregistrer()" [disabled]="chargement">Enregistrer</button>
-        <button class="btn btn-outline" (click)="annulerForm()">Annuler</button>
+      <div class="app-header-actions">
+        <button class="btn btn-primary" (click)="editer(null)">Nouvel utilisateur</button>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-title">Liste des utilisateurs</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Nom</th><th>Email</th><th>R\u00f4le</th><th>Actif</th><th>Actions</th></tr></thead>
+    <div class="alert alert-error" *ngIf="erreur" role="alert">{{ erreur }}</div>
+    <div class="alert alert-success" *ngIf="message" role="alert">{{ message }}</div>
+
+    <div *ngIf="formVisible" class="card card-body">
+      <div class="card-header">
+        <div class="card-title">{{ userEdite ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur' }}</div>
+        <button class="btn btn-ghost btn-sm" (click)="fermerFormulaire()">Fermer</button>
+      </div>
+
+      <form (ngSubmit)="enregistrer()" #form="ngForm" class="form-grid">
+        <input type="hidden" name="id" [ngModel]="user.id" />
+
+        <div class="form-group">
+          <label class="form-label">Nom complet</label>
+          <input type="text" name="nom" [(ngModel)]="user.nom" required class="form-input" placeholder="Nom et prénom" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" [(ngModel)]="user.email" required class="form-input" placeholder="utilisateur@entreprise.com" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Mot de passe</label>
+          <input type="password" name="motDePasse" [(ngModel)]="user.motDePasse" [required]="!userEdite" class="form-input" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" />
+          <span class="form-hint">{{ userEdite ? 'Laissez vide pour conserver le mot de passe actuel' : 'Obligatoire' }}</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">R&ocirc;le</label>
+          <select name="role" [(ngModel)]="user.role" required class="form-select">
+            <option value="AGENT">Agent</option>
+            <option value="SUPERVISEUR">Superviseur</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Statut</label>
+          <select name="actif" [(ngModel)]="user.actif" class="form-select">
+            <option value="true">Actif</option>
+            <option value="false">Inactif</option>
+          </select>
+        </div>
+
+        <div class="form-actions" style="margin-top: var(--space-5);">
+          <button type="submit" class="btn btn-success" [disabled]="chargement || !form.valid">{{ chargement ? "Enregistrement..." : "Enregistrer l'utilisateur" }}</button>
+          <button type="button" class="btn btn-outline" (click)="fermerFormulaire()">Annuler</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card card-body">
+      <div class="card-header">
+        <div class="card-title">Liste des utilisateurs</div>
+      </div>
+
+      <div class="table-wrap" style="margin-top: var(--space-3);">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nom</th><th>Email</th><th>R&ocirc;le</th><th>Statut</th><th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
             <tr *ngFor="let u of utilisateurs">
-              <td>{{ u.nom }}</td><td>{{ u.email }}</td>
-              <td><span class="badge" [class]="'badge-' + (u.role||'').toLowerCase()">{{ u.role }}</span></td>
-              <td>{{ u.actif ? "Oui" : "Non" }}</td>
-              <td><button class="btn btn-outline btn-sm" (click)="editer(u)">Modifier</button> <button class="btn btn-danger btn-sm" (click)="supprimer(u)" *ngIf="u.id !== auth.utilisateur()?.id">Suppr.</button></td>
+              <td>{{ u.nom }}</td>
+              <td>{{ u.email }}</td>
+              <td><span class="badge" [class]="'badge-' + (u.role === 'SUPERVISEUR' ? 'info' : 'secondary')">{{ u.role }}</span></td>
+              <td><span class="badge" [class]="'badge-' + (u.actif ? 'success' : 'secondary')">{{ u.actif ? 'Actif' : 'Inactif' }}</span></td>
+              <td class="table-actions">
+                <button class="btn btn-outline btn-sm" (click)="editer(u)">Modifier</button>
+                <button *ngIf="u.id !== auth.utilisateur()?.id" class="btn btn-danger btn-sm" (click)="supprimer(u)">Supprimer</button>
+              </td>
             </tr>
-            <tr *ngIf="utilisateurs.length === 0"><td colspan="5" class="empty">Aucun utilisateur.</td></tr>
+            <tr *ngIf="utilisateurs.length === 0"><td colspan="5" class="empty-state">Aucun utilisateur enregistr&eacute;.</td></tr>
           </tbody>
         </table>
       </div>
@@ -54,31 +104,55 @@ import { Utilisateur } from "../../models";
 export class UtilisateursComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
+
   utilisateurs: Utilisateur[] = [];
-  erreur = ""; message = ""; formVisible = false; chargement = false;
+  erreur = "";
+  message = "";
+  formVisible = false;
+  chargement = false;
   userEdite: Utilisateur | null = null;
-  user: Utilisateur = { id: "", nom: "", email: "", role: "AGENT", actif: true, motDePasseHash: "" };
+  user: Utilisateur = { id: "", nom: "", email: "", role: "AGENT", actif: true };
 
   async ngOnInit() { this.charger(); }
-  async charger() { const r = await this.api.get<Utilisateur[]>("/utilisateurs"); this.utilisateurs = r.data || []; }
+
+  async charger() {
+    const r = await this.api.get<Utilisateur[]>("/utilisateurs");
+    this.utilisateurs = r.data || [];
+  }
+
   editer(u: Utilisateur | null) {
     this.userEdite = u;
-    this.user = u ? { ...u, motDePasse: "" } : { id: "", nom: "", email: "", role: "AGENT", actif: true, motDePasseHash: "", motDePasse: "" };
-    this.formVisible = true; this.erreur = ""; this.message = "";
+    this.user = u ? { ...u } : { id: "", nom: "", email: "", role: "AGENT", actif: true };
+    this.formVisible = true;
+    this.erreur = "";
+    this.message = "";
   }
-  annulerForm() { this.formVisible = false; }
+
+  fermerFormulaire() { this.formVisible = false; }
+
   async enregistrer() {
-    this.erreur = ""; this.chargement = true;
+    this.erreur = "";
+    this.chargement = true;
     let r;
-    if (this.userEdite) r = await this.api.put<Utilisateur>(`/utilisateurs/${this.userEdite.id}`, this.user);
-    else r = await this.api.post<Utilisateur>("/utilisateurs", this.user);
+    if (this.userEdite) {
+      r = await this.api.put<Utilisateur>(`/utilisateurs/${this.userEdite.id}`, this.user);
+    } else {
+      r = await this.api.post<Utilisateur>("/utilisateurs", this.user);
+    }
     this.chargement = false;
-    if (r.ok) { this.message = "Utilisateur enregistr&eacute;."; this.formVisible = false; await this.charger(); }
-    else this.erreur = r.erreur || "Erreur.";
+    if (r.ok) {
+      this.message = "Utilisateur enregistr&eacute; avec succ&egrave;s.";
+      this.formVisible = false;
+      await this.charger();
+    } else {
+      this.erreur = r.erreur || "Erreur.";
+    }
   }
+
   async supprimer(u: Utilisateur) {
     if (!confirm("Supprimer cet utilisateur ?")) return;
     const r = await this.api.del(`/utilisateurs/${u.id}`);
-    if (r.ok) await this.charger(); else this.erreur = r.erreur || "Erreur.";
+    if (r.ok) await this.charger();
+    else this.erreur = r.erreur || "Erreur.";
   }
 }

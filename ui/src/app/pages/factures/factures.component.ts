@@ -3,7 +3,7 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
-import { Facture, Client, Ligne } from "../../models";
+import { Facture, Client } from "../../models";
 
 @Component({
   selector: "app-factures",
@@ -11,73 +11,114 @@ import { Facture, Client, Ligne } from "../../models";
   imports: [CommonModule, FormsModule],
   template: `
     <div class="app-header">
-      <h1>Factures</h1>
-      <button class="btn btn-primary" (click)="nouvelleFacture()">Nouvelle facture</button>
+      <div>
+        <h1>Factures</h1>
+        <div class="subtitle">Gestion de vos factures clients</div>
+      </div>
+      <div class="app-header-actions">
+        <button class="btn btn-primary" (click)="ouvrirFormulaire()">Nouvelle facture</button>
+      </div>
     </div>
 
-    <div class="alert alert-error" *ngIf="erreur">{{ erreur }}</div>
-    <div class="alert alert-success" *ngIf="message">{{ message }}</div>
+    <div class="alert alert-error" *ngIf="erreur" role="alert">{{ erreur }}</div>
+    <div class="alert alert-success" *ngIf="message" role="alert">{{ message }}</div>
 
-    <div class="card" *ngIf="formVisible">
-      <div class="card-title">Nouvelle facture</div>
-      <div class="form-row">
+    <!-- Formulaire -->
+    <div *ngIf="formVisible" class="card card-body">
+      <div class="card-header">
+        <div class="card-title">{{ mode === 'create' ? 'Nouvelle facture' : 'Modifier la facture' }}</div>
+        <button class="btn btn-ghost btn-sm" (click)="fermerFormulaire()">Fermer</button>
+      </div>
+
+      <form (ngSubmit)="enregistrer()" #form="ngForm" class="form-grid">
+        <input type="hidden" name="id" [ngModel]="facture.id" />
+        <input type="hidden" name="agentId" [ngModel]="auth.utilisateur()?.id" />
+        <input type="hidden" name="agentNom" [ngModel]="auth.utilisateur()?.nom" />
+
         <div class="form-group">
-          <label>Client</label>
-          <select name="client" [(ngModel)]="nouveau.clientId" required>
-            <option value="">-- s&electionner --</option>
+          <label class="form-label">Client</label>
+          <select name="clientId" [(ngModel)]="facture.clientId" required class="form-select">
+            <option value="">-- Sélectionner un client --</option>
             <option *ngFor="let c of clients" [value]="c.id">{{ c.nom }}</option>
           </select>
         </div>
+
         <div class="form-group">
-          <label>Date</label>
-          <input type="date" name="date" [(ngModel)]="nouveau.date" />
+          <label class="form-label">Date de la facture</label>
+          <input type="date" name="date" [(ngModel)]="facture.date" required class="form-input" />
         </div>
+
         <div class="form-group">
-          <label>&E9;ch&e9;ance</label>
-          <input type="date" name="echeance" [(ngModel)]="nouveau.echeance" />
+          <label class="form-label">Date d'échéance</label>
+          <input type="date" name="echeance" [(ngModel)]="facture.echeance" class="form-input" />
         </div>
-      </div>
-      <div class="card">
-        <div class="card-title">Lignes</div>
-        <table class="lines-table">
-          <thead><tr><th>D&e9;signation</th><th>Qte</th><th>Prix unit.</th><th>TVA %</th><th>Total</th><th></th></tr></thead>
-          <tbody>
-            <tr *ngFor="let l of nouveau.lignes; let i = index">
-              <td><input name="desc-{{i}}" [(ngModel)]="l.description" placeholder="D&e9;signation" /></td>
-              <td><input type="number" name="qte-{{i}}" [(ngModel)]="l.quantite" (change)="recalcul(i)" /></td>
-              <td><input type="number" name="pu-{{i}}" [(ngModel)]="l.prixUnitaire" (change)="recalcul(i)" /></td>
-              <td><input type="number" name="tva-{{i}}" [(ngModel)]="l.tva" step="0.01" (change)="recalcul(i)" /></td>
-              <td>{{ l.total | number }}</td>
-              <td><button type="button" class="btn btn-danger btn-sm" (click)="supprimerLigne(i)">X</button></td>
-            </tr>
-            <tr><td colspan="6"><button type="button" class="btn btn-outline btn-sm" (click)="ajouterLigne()">+ Ajouter une ligne</button></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="form-actions">
-        <button type="button" class="btn btn-success" (click)="enregistrerFacture()" [disabled]="chargement">Enregistrer</button>
-        <button type="button" class="btn btn-outline" (click)="annulerForm()">Annuler</button>
-      </div>
+
+        <div class="form-group full">
+          <label class="form-label">Lignes de facture</label>
+          <table class="data-table" style="margin-top: var(--space-2);">
+            <thead>
+              <tr>
+                <th>Désignation</th><th>Quantité</th><th>Prix unitaire</th><th>TVA %</th><th>Total</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let l of facture.lignes; let i = index">
+                <td><input type="text" name="desc-{{i}}" [(ngModel)]="l.description" placeholder="Désignation" class="form-input" /></td>
+                <td><input type="number" name="qte-{{i}}" [(ngModel)]="l.quantite" (change)="recalculLigne(i)" step="1" class="form-input" /></td>
+                <td><input type="number" name="pu-{{i}}" [(ngModel)]="l.prixUnitaire" (change)="recalculLigne(i)" step="0.01" class="form-input" /></td>
+                <td><input type="number" name="tva-{{i}}" [(ngModel)]="l.tva" (change)="recalculLigne(i)" step="0.01" class="form-input" /></td>
+                <td>{{ l.total | number:'1.0-2' }}</td>
+                <td><button type="button" class="btn btn-danger btn-sm" (click)="supprimerLigne(i)">Supprimer</button></td>
+              </tr>
+              <tr>
+                <td colspan="6">
+                  <button type="button" class="btn btn-outline btn-sm" (click)="ajouterLigne()">+ Ajouter une ligne</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="margin-top: var(--space-3); font-weight: var(--font-weight-semibold);">
+            HT : {{ totaux.ht | number:'1.0-2' }} &nbsp;|&nbsp; TVA : {{ totaux.tva | number:'1.0-2' }} &nbsp;|&nbsp; TTC : {{ totaux.ttc | number:'1.0-2' }}
+          </div>
+        </div>
+
+        <div class="form-actions" style="margin-top: var(--space-5);">
+          <button type="submit" class="btn btn-success" [disabled]="chargement || !form.valid">{{ chargement ? "Enregistrement..." : "Enregistrer la facture" }}</button>
+          <button type="button" class="btn btn-outline" (click)="fermerFormulaire()">Annuler</button>
+        </div>
+      </form>
     </div>
 
-    <div class="card">
-      <div class="card-title">Liste des factures</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>N&deg;</th><th>Client</th><th>Date</th><th>HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Actions</th></tr></thead>
+    <!-- Liste -->
+    <div class="card card-body">
+      <div class="card-header">
+        <div class="card-title">Liste des factures</div>
+      </div>
+
+      <div class="table-wrap" style="margin-top: var(--space-3);">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Numéro</th><th>Client</th><th>Date</th><th>HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Actions</th>
+            </tr>
+          </thead>
           <tbody>
             <tr *ngFor="let f of factures">
-              <td>{{ f.numero }}</td><td>{{ f.clientNom }}</td><td>{{ f.date | slice:0:10 }}</td>
-              <td>{{ f.ht | number }}</td><td>{{ f.tva | number }}</td><td>{{ f.ttc | number }}</td>
-              <td><span class="badge" [class]="'badge-' + (f.statut||'').toLowerCase()">{{ f.statut }}</span></td>
-              <td>
-                <button *ngIf="f.statut==='BROUILLON'" class="btn btn-outline btn-sm" (click)="envoyer(f)">Envoyer</button>
-                <button *ngIf="f.statut==='ENVOYEE'" class="btn btn-success btn-sm" (click)="payer(f)">Marquer pay&eacute;</button>
-                <button *ngIf="f.statut!=='ANNULEE' && auth.isSuperviseur()" class="btn btn-danger btn-sm" (click)="annuler(f)">Annuler</button>
-                <a class="btn btn-outline btn-sm" [routerLink]="['/factures', f.id]">D&e9;tail</a>
+              <td>{{ f.numero }}</td>
+              <td>{{ f.clientNom }}</td>
+              <td>{{ f.date | slice:0:10 }}</td>
+              <td>{{ f.ht | number:'1.0-2' }}</td>
+              <td>{{ f.tva | number:'1.0-2' }}</td>
+              <td>{{ f.ttc | number:'1.0-2' }}</td>
+              <td><span class="badge" [class]="'badge-' + statutClass(f.statut)">{{ f.statut }}</span></td>
+              <td class="table-actions">
+                <button *ngIf="f.statut === 'BROUILLON'" class="btn btn-outline btn-sm" (click)="envoyer(f)">Envoyer</button>
+                <button *ngIf="f.statut === 'ENVOYEE'" class="btn btn-success btn-sm" (click)="payer(f)">Marquer payée</button>
+                <button *ngIf="f.statut !== 'ANNULEE' && auth.isSuperviseur()" class="btn btn-danger btn-sm" (click)="annuler(f)">Annuler</button>
+                <button class="btn btn-ghost btn-sm" (click)="ouvrirFormulaire(f)">Voir</button>
               </td>
             </tr>
-            <tr *ngIf="factures.length === 0"><td colspan="8" class="empty">Aucune facture.</td></tr>
+            <tr *ngIf="factures.length === 0"><td colspan="8" class="empty-state">Aucune facture enregistrée.</td></tr>
           </tbody>
         </table>
       </div>
@@ -86,14 +127,25 @@ import { Facture, Client, Ligne } from "../../models";
 })
 export class FacturesComponent implements OnInit {
   api = inject(ApiService);
+  auth = inject(AuthService);
+
   factures: Facture[] = [];
   clients: Client[] = [];
   erreur = "";
   message = "";
   formVisible = false;
   chargement = false;
-  nouveau: any = { clientId: "", date: "", echeance: "", lignes: [] };
-  auth = inject(AuthService);
+  mode = "create";
+  facture: Facture = this.newFacture();
+  totaux = { ht: 0, tva: 0, ttc: 0 };
+
+  newFacture(): Facture {
+    return {
+      id: "", numero: "", clientId: "", clientNom: "", date: new Date().toISOString().slice(0, 10),
+      lignes: [], ht: 0, tva: 0, ttc: 0, statut: "BROUILLON",
+      agentId: "", agentNom: "",
+    };
+  }
 
   async ngOnInit() {
     this.charger();
@@ -106,44 +158,68 @@ export class FacturesComponent implements OnInit {
     this.factures = r.data || [];
   }
 
-  nouvelleFacture() {
-    this.nouveau = { clientId: "", date: new Date().toISOString().slice(0, 10), echeance: "", lignes: [] };
-    this.ajouterLigne();
+  ouvrirFormulaire(f?: Facture) {
+    if (f) {
+      this.mode = "edit";
+      this.facture = { ...f };
+    } else {
+      this.mode = "create";
+      this.facture = this.newFacture();
+      this.ajouterLigne();
+    }
     this.formVisible = true;
     this.erreur = "";
     this.message = "";
   }
 
-  annulerForm() { this.formVisible = false; }
+  fermerFormulaire() {
+    this.formVisible = false;
+  }
 
   ajouterLigne() {
-    this.nouveau.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0.18, total: 0 });
+    this.facture.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0.18, total: 0 });
+    this.calculerTotaux();
   }
 
-  supprimerLigne(i: number) { this.nouveau.lignes.splice(i, 1); }
+  supprimerLigne(i: number) {
+    this.facture.lignes.splice(i, 1);
+    this.calculerTotaux();
+  }
 
-  recalcul(i: number) {
-    const l = this.nouveau.lignes[i];
+  recalculLigne(i: number) {
+    const l = this.facture.lignes[i];
     l.total = (l.quantite || 0) * (l.prixUnitaire || 0);
+    this.calculerTotaux();
   }
 
-  async enregistrerFacture() {
+  calculerTotaux() {
+    this.totaux.ht = this.facture.lignes.reduce((s, l) => s + (l.total || 0), 0);
+    this.totaux.tva = this.facture.lignes.reduce((s, l) => s + (l.total || 0) * (l.tva || 0), 0);
+    this.totaux.ttc = this.totaux.ht + this.totaux.tva;
+    this.facture.ht = this.totaux.ht;
+    this.facture.tva = this.totaux.tva;
+    this.facture.ttc = this.totaux.ttc;
+  }
+
+  async enregistrer() {
     this.erreur = "";
     this.chargement = true;
-    const r = await this.api.post<Facture>("/factures", this.nouveau);
+    this.calculerTotaux();
+    const r = await this.api.post<Facture>("/factures", this.facture);
     this.chargement = false;
     if (r.ok) {
-      this.message = "Facture enregistr&eacute;e.";
+      this.message = "Facture enregistrée avec succès.";
       this.formVisible = false;
       await this.charger();
     } else {
-      this.erreur = r.erreur || "Erreur.";
+      this.erreur = r.erreur || "Erreur lors de l'enregistrement.";
     }
   }
 
   async envoyer(f: Facture) {
     const r = await this.api.post(`/factures/${f.id}/envoyer`);
     if (r.ok) await this.charger();
+    else this.erreur = r.erreur || "Erreur.";
   }
 
   async payer(f: Facture) {
@@ -155,9 +231,17 @@ export class FacturesComponent implements OnInit {
   }
 
   async annuler(f: Facture) {
-    if (!confirm("Annuler cette facture ? (r\u00e9serv\u00e9 au superviseur)")) return;
+    if (!confirm("Annuler cette facture ? Cette action est irréversible.")) return;
     const r = await this.api.post(`/factures/${f.id}/annuler`);
     if (r.ok) await this.charger();
     else this.erreur = r.erreur || "Erreur.";
+  }
+
+  statutClass(s: string) {
+    const map: Record<string, string> = {
+      BROUILLON: "secondary", ENVOYEE: "info", PAYEE: "success",
+      ACCEPTE: "success", ANNULEE: "error", REFUSE: "error",
+    };
+    return map[s] || "secondary";
   }
 }
