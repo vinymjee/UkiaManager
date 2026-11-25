@@ -1,7 +1,9 @@
 import { Injectable, signal, computed, effect } from "@angular/core";
 import { Router } from "@angular/router";
 import { Role, Utilisateur } from "../models";
-import { ApiService } from "./api.service";
+import { environment } from "../../environments";
+
+const API = environment.apiUrl || "";
 
 @Injectable({ providedIn: "root" })
 export class AuthService {
@@ -13,7 +15,7 @@ export class AuthService {
   readonly isSuperviseur = computed(() => this.utilisateurSignal()?.role === "SUPERVISEUR");
   readonly isAgent = computed(() => this.utilisateurSignal()?.role === "AGENT");
 
-  constructor(private api: ApiService, private router: Router) {
+  constructor(private router: Router) {
     const saved = localStorage.getItem("ukia_token");
     const savedUser = localStorage.getItem("ukia_user");
     if (saved) this.token.set(saved);
@@ -29,19 +31,29 @@ export class AuthService {
   }
 
   async login(email: string, motDePasse: string): Promise<boolean> {
-    const res = await this.api.post<{ token: string; utilisateur: Utilisateur }>("/auth/login", { email, motDePasse });
-    if (res.ok && res.data) {
-      this.token.set(res.data.token);
-      this.utilisateurSignal.set(res.data.utilisateur);
+    const res = await fetch(`${API}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, motDePasse }),
+    });
+    const data = await res.json();
+    if (data.ok && data.data) {
+      this.token.set(data.data.token);
+      this.utilisateurSignal.set(data.data.utilisateur);
       return true;
     }
     return false;
   }
 
   async initSuperviseur(nom: string, email: string, motDePasse: string): Promise<boolean> {
-    const res = await this.api.post<{ utilisateur: Utilisateur }>("/auth/init", { nom, email, motDePasse, force: true });
-    if (res.ok && res.data) {
-      this.utilisateurSignal.set(res.data.utilisateur);
+    const res = await fetch(`${API}/auth/init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nom, email, motDePasse, force: true }),
+    });
+    const data = await res.json();
+    if (data.ok && data.data) {
+      this.utilisateurSignal.set(data.data.utilisateur);
       return true;
     }
     return false;

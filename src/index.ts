@@ -162,6 +162,11 @@ export default {
 
     if (request.method === "OPTIONS") return optionsPreflight();
 
+    // Seules les routes /api/* sont gérées par ce worker
+    if (!base.startsWith("/api")) {
+      return new Response("Not found", { status: 404 });
+    }
+
     if (base === "/api/health" && request.method === "GET") {
       return ok({ status: "ok", service: "ukia-caisse" });
     }
