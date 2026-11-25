@@ -157,75 +157,88 @@ async function exporterComptabilite(data: CaisseData): Promise<EcritureComptable
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const base = urlBase(url);
-
-    if (request.method === "OPTIONS") return optionsPreflight();
-
-    // Seules les routes /api/* sont gérées par ce worker
-    if (!base.startsWith("/api")) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    if (base === "/api/health" && request.method === "GET") {
-      return ok({ status: "ok", service: "ukia-caisse" });
-    }
-
-    // ==================== AUTH ====================
-    if (base === "/api/auth/login" && request.method === "POST") {
-      const body = await parseBody<{ email: string; motDePasse: string }>(request);
-      if (!body?.email || !body?.motDePasse) return erreur("email et mot de passe requis");
-      const data = await getData(env);
-      const utilisateur = data.utilisateurs.find((u) => u.email === body.email && u.actif);
-      if (!utilisateur) return erreur("Identifiants invalides", 401);
-      const hash = await sha256Hex(body.motDePasse);
-      if (hash !== utilisateur.motDePasseHash) return erreur("Identifiants invalides", 401);
-      const token = await signJWT(
-        {
-          sub: utilisateur.id,
-          role: utilisateur.role,
-          nom: utilisateur.nom,
-          exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
-        },
-        env.JWT_SECRET,
+    try {
+      return await handleRequest(request, env);
+    } catch (err: any) {
+      console.error("Erreur non geree:", err);
+      return json(
+        { ok: false, erreur: err?.message || "Erreur interne du serveur" },
+        500,
       );
-      return ok({
-        token,
-        utilisateur: { id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role },
-      });
     }
+  },
+} satisfies ExportedHandler<Env>;
 
-    if (base === "/api/auth/me" && request.method === "GET") {
-      const me = await verifieToken(env, request);
-      if (!me) return erreur("Non authentifie", 401);
-      const data = await getData(env);
-      const utilisateur = data.utilisateurs.find((u) => u.id === me.id);
-      if (!utilisateur) return erreur("Utilisateur introuvable", 404);
-      return ok({ id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role });
-    }
+async function handleRequest(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const base = urlBase(url);
 
-    if (base === "/api/auth/init" && request.method === "POST") {
-      // Creer le premier superviseur si aucun utilisateur n'existe (premier lancement)
-      const body = await parseBody<{ nom: string; email: string; motDePasse: string }>(request);
-      const data = await getData(env);
-      if (data.utilisateurs.length > 0 && !body?.force) {
-        return erreur("Des utilisateurs existent deja", 400);
-      }
-      if (!body?.nom || !body?.email || !body?.motDePasse) return erreur("nom, email et motDePasse requis");
-      if (data.utilisateurs.some((u) => u.email === body.email)) return erreur("Email deja utilise");
-      const superviseur: Utilisateur = {
-        id: id(),
-        nom: body.nom,
-        email: body.email,
-        role: "SUPERVISEUR",
-        motDePasseHash: await sha256Hex(body.motDePasse),
-        actif: true,
-        creeLe: maintenant(),
-      };
-      data.utilisateurs.push(superviseur);
-      await saveData(env, data);
-      return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role });
+  if (request.method === "OPTIONS") return optionsPreflight();
+
+  // Seules les routes /api/* sont gérées par ce worker
+  if (!base.startsWith("/api")) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  if (base === "/api/health" && request.method === "GET") {
+    return ok({ status: "ok", service: "ukia-caisse" });
+  }
+
+  // ==================== AUTH ====================
+  if (base === "/api/auth/login" && request.method === "POST") {
+    const body = await parseBody<{ email: string; motDePasse: string }>(request);
+    if (!body?.email || !body?.motDePasse) return erreur("email et mot de passe requis");
+    const data = await getData(env);
+    const utilisateur = data.utilisateurs.find((u) => u.email === body.email && u.actif);
+    if (!utilisateur) return erreur("Identifiants invalides", 401);
+    const hash = await sha256Hex(body.motDePasse);
+    if (hash !== utilisateur.motDePasseHash) return erreur("Identifiants invalides", 401);
+    const token = await signJWT(
+      {
+        sub: utilisateur.id,
+        role: utilisateur.role,
+        nom: utilisateur.nom,
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
+      },
+      env.JWT_SECRET,
+    );
+    return ok({
+      token,
+      utilisateur: { id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role },
+    });
+  }
+
+  if (base === "/api/auth/me" && request.method === "GET") {
+    const me = await verifieToken(env, request);
+    if (!me) return erreur("Non authentifie", 401);
+    const data = await getData(env);
+    const utilisateur = data.utilisateurs.find((u) => u.id === me.id);
+    if (!utilisateur) return erreur("Utilisateur introuvable", 404);
+    return ok({ id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role });
+  }
+
+  if (base === "/api/auth/init" && request.method === "POST") {
+    // Creer le premier superviseur si aucun utilisateur n'existe (premier lancement)
+    const body = await parseBody<{ nom: string; email: string; motDePasse: string; force?: boolean }>(request);
+    const data = await getData(env);
+    if (data.utilisateurs.length > 0 && !body?.force) {
+      return erreur("Des utilisateurs existent deja", 400);
     }
+    if (!body?.nom || !body?.email || !body?.motDePasse) return erreur("nom, email et motDePasse requis");
+    if (data.utilisateurs.some((u) => u.email === body.email)) return erreur("Email deja utilise");
+    const superviseur: Utilisateur = {
+      id: id(),
+      nom: body.nom,
+      email: body.email,
+      role: "SUPERVISEUR",
+      motDePasseHash: await sha256Hex(body.motDePasse),
+      actif: true,
+      creeLe: maintenant(),
+    };
+    data.utilisateurs.push(superviseur);
+    await saveData(env, data);
+    return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role });
+  }
 
     // ==================== CRUD GENERIQUE (utilisateurs, clients) ====================
     const collectionMatch = base.match(/^\/api\/([a-zA-Z]+)(?:\/([^/]+))?$/);
@@ -555,5 +568,4 @@ export default {
     }
 
     return erreur("Route non trouvee", 404);
-  },
-} satisfies ExportedHandler<Env>;
+  }
