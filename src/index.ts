@@ -1,9 +1,7 @@
+import { DATA_KEY, EMPTY_DATA, ALLOWED_COLLECTIONS } from "./types";
 import type {
   CaisseData,
   Collection,
-  EMPTY_DATA,
-  DATA_KEY,
-  ALLOWED_COLLECTIONS,
   Role,
   StatutFacture,
   StatutDevis,
@@ -25,6 +23,7 @@ import { sha256Hex, signJWT, verifyJWT } from "./auth";
 interface Env {
   CAISSE_DB: KVNamespace;
   JWT_SECRET: string;
+  ASSETS: Fetcher;
 }
 
 function json(data: unknown, status = 200): Response {
@@ -175,9 +174,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "OPTIONS") return optionsPreflight();
 
-  // Seules les routes /api/* sont gérées par ce worker
+  // Les routes /api/* sont gérées par ce worker, tout le reste sert l'app Angular
   if (!base.startsWith("/api")) {
-    return new Response("Not found", { status: 404 });
+    return env.ASSETS.fetch(request);
   }
 
   if (base === "/api/health" && request.method === "GET") {

@@ -11,6 +11,10 @@ id = "d59f8fda317b4f009d6ded733e7b1aa7"
 [vars]
 JWT_SECRET = "changez-moi-en-production-une-cle-secrete-32-caracteres"
 
-# Dossier des assets statiques (build Angular) servi par le worker en dev.
-# En production, uploadez le contenu de ui/dist/ukia-caisse-ui dans ce dossier
-# ou utilisez Cloudflare Pages pour le front + ce Worker pour l'API.
+# Assets statiques (build Angular) servis par le Worker.
+# Le Worker gère /api/* et sert l'application Angular pour tout le reste.
+[assets]
+directory = "./ui/dist/ukia-caisse-ui/browser"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "single-page-application"
