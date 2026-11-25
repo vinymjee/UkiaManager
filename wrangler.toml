@@ -1,0 +1,16 @@
+name = "ukia-caisse"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Liaison KV : créez-la avec  npx wrangler kv:namespace create CAISSE_DB
+# puis collez l'id ici.
+[[kv_namespaces]]
+binding = "CAISSE_DB"
+id = "d59f8fda317b4f009d6ded733e7b1aa7"
+
+[vars]
+JWT_SECRET = "changez-moi-en-production-une-cle-secrete-32-caracteres"
+
+# Dossier des assets statiques (build Angular) servi par le worker en dev.
+# En production, uploadez le contenu de ui/dist/ukia-caisse-ui dans ce dossier
+# ou utilisez Cloudflare Pages pour le front + ce Worker pour l'API.

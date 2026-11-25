@@ -1,0 +1,19 @@
+# Cloudflare
+node_modules/
+.wrangler/
+dist/
+ui/dist/
+ui/node_modules/
+ui/.angular/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
