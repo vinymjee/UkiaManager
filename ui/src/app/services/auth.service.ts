@@ -53,20 +53,6 @@ export class AuthService {
     return false;
   }
 
-  async initSuperviseur(nom: string, email: string, motDePasse: string): Promise<boolean> {
-    const res = await fetch(`${API}/api/auth/init`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nom, email, motDePasse, force: true }),
-    });
-    const data = await res.json();
-    if (data.ok && data.data) {
-      this.utilisateurSignal.set(data.data.utilisateur);
-      return true;
-    }
-    return false;
-  }
-
   logout(): void {
     this.token.set(null);
     this.utilisateurSignal.set(null);

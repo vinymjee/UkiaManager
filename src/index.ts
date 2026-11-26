@@ -366,11 +366,15 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   }
 
   if (base === "/api/auth/init" && request.method === "POST") {
-    // Creer le premier superviseur si aucun utilisateur n'existe (premier lancement)
-    const body = await parseBody<{ nom: string; email: string; motDePasse: string; force?: boolean }>(request);
+    // Bootstrap unique : nécessite la clé secrète et aucun utilisateur existant.
+    // Par la suite, seul le superviseur crée/gère les comptes via /api/utilisateurs.
+    const body = await parseBody<{ nom: string; email: string; motDePasse: string; setupKey?: string }>(request);
     const data = await getData(env);
-    if (data.utilisateurs.length > 0 && !body?.force) {
-      return erreur("Des utilisateurs existent deja", 400);
+    if (data.utilisateurs.length > 0) {
+      return erreur("Initialisation fermée. Seul le superviseur peut gérer les comptes.", 403);
+    }
+    if (!body?.setupKey || body.setupKey !== env.JWT_SECRET) {
+      return erreur("Cle d'initialisation invalide", 403);
     }
     if (!body?.nom || !body?.email || !body?.motDePasse) return erreur("nom, email et motDePasse requis");
     if (data.utilisateurs.some((u) => u.email === body.email)) return erreur("Email deja utilise");

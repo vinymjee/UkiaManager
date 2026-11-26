@@ -64,36 +64,9 @@ import { AuthService } from "../../services/auth.service";
           </div>
         </form>
 
-        <div class="login-footer">
-          <span>Premier lancement ?</span>
-          <a (click)="showInit = !showInit" style="cursor:pointer">Créer le premier compte superviseur</a>
+        <div class="login-footer" style="margin-top: var(--space-5);">
+          <span>L'accès est réservé aux utilisateurs autorisés. Contactez votre superviseur.</span>
         </div>
-
-        <div *ngIf="showInit" class="init-card" style="margin-top: var(--space-5); padding: var(--space-4); border: 1px dashed rgb(var(--color-border)); border-radius: var(--radius-md); background: rgb(var(--color-bg));">
-          <div style="font-size: var(--text-xs); font-weight: var(--font-weight-semibold); color: rgb(var(--color-text-secondary)); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-3);">Nouvelle installation</div>
-          <form (ngSubmit)="initSuperviseur()" #fi="ngForm" class="login-form">
-            <div class="form-grid">
-              <div class="form-group">
-                <label class="form-label">Nom complet</label>
-                <input type="text" name="nom" [(ngModel)]="initNom" required class="form-input" placeholder="Jean Dupont" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Email superviseur</label>
-                <input type="email" name="email" [(ngModel)]="initEmail" required class="form-input" placeholder="superviseur@entreprise.com" />
-              </div>
-              <div class="form-group">
-                <label class="form-label">Mot de passe</label>
-                <input type="password" name="motDePasse" [(ngModel)]="initMdp" required class="form-input" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" />
-              </div>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-secondary btn-block" [disabled]="chargement">{{ chargement ? "Création..." : "Créer le superviseur" }}</button>
-            </div>
-          </form>
-          <p style="font-size: var(--text-xs); color: rgb(var(--color-text-muted)); margin-top: var(--space-2);">Cette étape n'est nécessaire que si aucun utilisateur n'existe encore.</p>
-        </div>
-
-        <div class="alert alert-info" *ngIf="info" role="alert">{{ info }}</div>
       </div>
     </div>
   `,
@@ -105,13 +78,7 @@ export class LoginComponent {
   email = "";
   motDePasse = "";
   erreur = "";
-  info = "";
   chargement = false;
-  showInit = false;
-
-  initNom = "";
-  initEmail = "";
-  initMdp = "";
 
   async connexion() {
     this.erreur = "";
@@ -127,24 +94,6 @@ export class LoginComponent {
     } catch {
       this.chargement = false;
       this.erreur = "Une erreur est survenue lors de la connexion.";
-    }
-  }
-
-  async initSuperviseur() {
-    this.erreur = "";
-    this.chargement = true;
-    try {
-      const ok = await this.auth.initSuperviseur(this.initNom, this.initEmail, this.initMdp);
-      this.chargement = false;
-      if (ok) {
-        this.info = "Compte superviseur créé avec succès. Vous pouvez vous connecter.";
-        this.showInit = false;
-      } else {
-        this.erreur = "Impossible de créer le superviseur (des utilisateurs existent déjà ou l'email est déjà utilisé).";
-      }
-    } catch {
-      this.chargement = false;
-      this.erreur = "Une erreur est survenue lors de la création du compte.";
     }
   }
 }
