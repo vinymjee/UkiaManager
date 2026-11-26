@@ -4,7 +4,7 @@ import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
-import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur } from "../../models";
+import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Facture } from "../../models";
 
 @Component({
   selector: "app-caisse",
@@ -131,7 +131,7 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur } from "../../mod
       </div>
       <div class="table-wrap" style="margin-top: var(--space-3);">
         <table class="data-table">
-          <thead><tr><th>Date</th><th>N°</th><th>Type</th><th>Libellé</th><th>Montant</th><th>Source</th></tr></thead>
+          <thead><tr><th>Date</th><th>N°</th><th>Type</th><th>Libellé</th><th>Montant</th><th>Source</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let o of operations">
               <td>{{ o.date | slice:0:10 }}</td>
@@ -140,8 +140,9 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur } from "../../mod
               <td>{{ o.libelle }}</td>
               <td>{{ o.montant | number:'1.0-2' }}</td>
               <td>{{ o.source }}</td>
+              <td class="table-actions"><button class="btn btn-outline btn-sm" (click)="reimprimer(o)">Réimprimer {{ o.source === 'FACTURE' ? 'reçu' : 'bordereau' }}</button></td>
             </tr>
-            <tr *ngIf="operations.length === 0"><td colspan="6" class="empty-state">Aucune opération.</td></tr>
+            <tr *ngIf="operations.length === 0"><td colspan="7" class="empty-state">Aucune opération.</td></tr>
           </tbody>
         </table>
       </div>
@@ -180,6 +181,8 @@ export class CaisseComponent implements OnInit {
   operations: OperationCaisse[] = [];
   transferts: TransfertCaisse[] = [];
   transfertsEnAttente: TransfertCaisse[] = [];
+  recus: RecuPaiement[] = [];
+  factures: Facture[] = [];
   erreur = "";
   message = "";
   chargement = false;
@@ -206,6 +209,12 @@ export class CaisseComponent implements OnInit {
       const me = this.auth.utilisateur()?.id;
       this.transfertsEnAttente = this.transferts.filter((x) => x.destinataireId === me && x.statut === "EN_ATTENTE");
     }
+    const [rec, fac] = await Promise.all([
+      this.api.get<RecuPaiement[]>("/recus"),
+      this.api.get<Facture[]>("/factures"),
+    ]);
+    this.recus = rec.data || [];
+    this.factures = fac.data || [];
     if (this.auth.isSuperviseur()) {
       const s = await this.api.get<any[]>("/caisses/tous");
       if (s.ok) {
@@ -255,6 +264,91 @@ export class CaisseComponent implements OnInit {
     const r = await this.api.post(`/transferts-caisse/${t.id}/rejeter`);
     if (r.ok) { this.message = "Transfert rejeté."; await this.charger(); }
     else this.erreur = r.erreur || "Erreur.";
+  }
+
+  reimprimer(o: OperationCaisse) {
+    const recu = this.recus.find((r) => r.factureId === o.refId || r.id === o.refId);
+    if (recu) {
+      this.imprimerRecu(recu);
+    } else {
+      this.imprimerBordereau(o);
+    }
+  }
+
+  imprimerRecu(r: RecuPaiement) {
+    const facture = this.factures.find((f) => f.id === r.factureId);
+    const reste = facture ? Math.max(0, facture.ttc - r.montant) : 0;
+    const u = this.auth.utilisateur();
+    const nominatif = u?.titre ? `${u.titre} ${u.nom}` : u?.nom || "";
+    const cachet = u?.cachet || "";
+    const code = "PS/CLT/MGR";
+    const lignes = facture?.lignes || [];
+    const matricule = r.clientId || "UKLC_7";
+    const numFacture = facture?.numero || r.factureId || "00186";
+    const dateStr = r.date?.slice(0, 10) || "";
+
+    const bodyHtml = `
+      <hr class="rec-sep"/>
+      <div class="rec-titre-centre">RECU DE PAIEMENT</div>
+      <hr class="rec-sep2"/>
+      <div class="rec-infos">
+        <div class="rec-ligne"><span><b>Matricule client :</b> ${matricule}</span><span class="droite"><b>Num&eacute;ro facture :</b> <span class="rec-rouge">${numFacture}</span> /2026</span></div>
+        <div class="rec-client"><b>Client :</b> ${r.clientNom || "-"}</div>
+      </div>
+      <table class="rec-table">
+        <thead>
+          <tr><th style="width:14%">Code</th><th style="width:46%">Intitul&eacute;</th><th class="right" style="width:20%">Montant Vers&eacute;</th><th class="right" style="width:20%">Reste</th></tr>
+        </thead>
+        <tbody>
+          ${lignes.length ? lignes.map((l) => `<tr><td>${code}</td><td>${l.description || ""}</td><td class="right">${Number(l.total || 0).toFixed(2)} FCFA</td><td class="right">${reste.toFixed(2)} FCFA</td></tr>`).join("") : `<tr><td>${code}</td><td>Paiement</td><td class="right">${r.montant.toFixed(2)} FCFA</td><td class="right">${reste.toFixed(2)} FCFA</td></tr>`}
+          <tr class="rec-total"><td colspan="2">Total vers&eacute;</td><td class="right">${r.montant.toFixed(2)} FCFA</td><td class="right">${reste.toFixed(2)} FCFA</td></tr>
+        </tbody>
+      </table>
+      <p class="rec-montant-lettres">${r.montant.toLocaleString("fr-FR")} francs CFA</p>
+      <div class="rec-date">Brazzaville : le ${dateStr}</div>
+      <div class="rec-sign">
+        <div><b>${nominatif}</b></div>
+        ${cachet ? `<div class="rec-cachet">${cachet}</div>` : ""}
+      </div>
+      <div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
+    `;
+    this.print.printWithHeader("Reçu de paiement", bodyHtml);
+  }
+
+  imprimerBordereau(o: OperationCaisse) {
+    const u = this.auth.utilisateur();
+    const nominatif = u?.titre ? `${u.titre} ${u.nom}` : u?.nom || "";
+    const cachet = u?.cachet || "";
+    const dateStr = o.date?.slice(0, 10) || "";
+    const estDepense = o.type === "DECAISSEMENT" || o.type === "TRANSFERT_SORTANT";
+
+    const bodyHtml = `
+      <hr class="rec-sep"/>
+      <div class="rec-titre-centre">BORDEREAU DE ${estDepense ? "DEPENSE" : "VERSEMENT"}</div>
+      <hr class="rec-sep2"/>
+      <div class="rec-infos">
+        <div class="rec-ligne"><span><b>Num&eacute;ro :</b> ${o.numero}</span><span class="droite"><b>Date :</b> ${dateStr}</span></div>
+        <div class="rec-client"><b>Op&eacute;ration :</b> ${o.type}</div>
+        <div class="rec-client"><b>Libell&eacute; :</b> ${o.libelle}</div>
+      </div>
+      <table class="rec-table">
+        <thead>
+          <tr><th style="width:20%">Code</th><th style="width:50%">Intitul&eacute;</th><th class="right" style="width:30%">Montant</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>CAISSE</td><td>${o.libelle}</td><td class="right">${o.montant.toFixed(2)} FCFA</td></tr>
+          <tr class="rec-total"><td colspan="2">Total</td><td class="right">${o.montant.toFixed(2)} FCFA</td></tr>
+        </tbody>
+      </table>
+      <p class="rec-montant-lettres">${o.montant.toLocaleString("fr-FR")} francs CFA</p>
+      <div class="rec-date">Brazzaville : le ${dateStr}</div>
+      <div class="rec-sign">
+        <div><b>${nominatif}</b></div>
+        ${cachet ? `<div class="rec-cachet">${cachet}</div>` : ""}
+      </div>
+      <div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
+    `;
+    this.print.printWithHeader(estDepense ? "Bordereau de dépense" : "Bordereau de versement", bodyHtml);
   }
 
   imprimerHistorique() {
