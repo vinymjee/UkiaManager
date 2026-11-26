@@ -12,12 +12,15 @@ export interface Utilisateur {
   motDePasseHash: string;
   actif: boolean;
   droits: string[];
+  titre?: string;
+  cachet?: string;
   creeLe: string;
 }
 
 export interface Client {
   id: string;
   nom: string;
+  matricule?: string;
   email?: string;
   telephone?: string;
   adresse?: string;

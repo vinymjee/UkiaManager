@@ -32,6 +32,11 @@ import { Client } from "../../models";
         <input type="hidden" name="id" [ngModel]="client.id" />
 
         <div class="form-group">
+          <label class="form-label">Matricule</label>
+          <input type="text" name="matricule" [(ngModel)]="client.matricule" class="form-input" placeholder="Auto-généré si vide" />
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Nom / Raison sociale</label>
           <input type="text" name="nom" [(ngModel)]="client.nom" required class="form-input" placeholder="Nom du client" />
         </div>

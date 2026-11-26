@@ -230,7 +230,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     );
     return ok({
       token,
-      utilisateur: { id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role },
+      utilisateur: { id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role, droits: utilisateur.droits, titre: utilisateur.titre, cachet: utilisateur.cachet },
     });
   }
 
@@ -240,7 +240,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     const data = await getData(env);
     const utilisateur = data.utilisateurs.find((u) => u.id === me.id);
     if (!utilisateur) return erreur("Utilisateur introuvable", 404);
-    return ok({ id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role });
+    return ok({ id: utilisateur.id, nom: utilisateur.nom, email: utilisateur.email, role: utilisateur.role, droits: utilisateur.droits, titre: utilisateur.titre, cachet: utilisateur.cachet });
   }
 
   if (base === "/api/auth/init" && request.method === "POST") {
@@ -267,7 +267,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       data.caisses.push({ userId: superviseur.id, solde: 0, creeLe: maintenant(), majLe: maintenant() });
     }
     await saveData(env, data);
-    return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role, droits: superviseur.droits });
+    return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role, droits: superviseur.droits, titre: superviseur.titre, cachet: superviseur.cachet });
   }
 
 
@@ -774,12 +774,16 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           nouvelItem.actif = body.actif !== false;
            nouvelItem.droits = Array.isArray(body.droits) ? body.droits : [];
            if (nouvelItem.role === "SUPERVISEUR") nouvelItem.droits = [...TOUS_LES_DROITS];
+           if (body.titre) nouvelItem.titre = body.titre;
+           if (body.cachet) nouvelItem.cachet = body.cachet;
+           if (!nouvelItem.titre) nouvelItem.titre = nouvelItem.role === "SUPERVISEUR" ? "Superviseur" : "Agent";
            if (!data.caisses.find((c: any) => c.userId === nouvelItem.id)) {
              data.caisses.push({ userId: nouvelItem.id, solde: 0, creeLe: maintenant(), majLe: maintenant() });
            }
         }
         if (collection === "clients") {
           if (!body.nom) return erreur("nom requis");
+          if (!body.matricule) nouvelItem.matricule = `CLT-${nouvelItem.id.slice(0, 6).toUpperCase()}`;
         }
         liste.push(nouvelItem);
         data[collection] = liste;
@@ -807,6 +811,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
             if (body.role === "SUPERVISEUR" || liste[index].role === "SUPERVISEUR") body.droits = [...TOUS_LES_DROITS];
           }
           if (body.droits === undefined) body.droits = liste[index].droits || [];
+          if (body.titre !== undefined) body.titre = body.titre;
+          if (body.cachet !== undefined) body.cachet = body.cachet;
         }
         const misAJour = { ...liste[index], ...body, id: itemId };
         liste[index] = misAJour;

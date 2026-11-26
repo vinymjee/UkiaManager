@@ -49,6 +49,16 @@ import { Utilisateur, TOUS_LES_DROITS } from "../../models";
         </div>
 
         <div class="form-group">
+          <label class="form-label">Titre / Fonction (pour re&ccedil;us)</label>
+          <input type="text" name="titre" [(ngModel)]="user.titre" class="form-input" placeholder="ex: Chief Executive Officer" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Cachet / Signature (texte)</label>
+          <input type="text" name="cachet" [(ngModel)]="user.cachet" class="form-input" placeholder="ex: Cachet entreprise" />
+        </div>
+
+        <div class="form-group">
           <label class="form-label">R&ocirc;le</label>
           <select name="role" [(ngModel)]="user.role" required class="form-select">
             <option value="AGENT">Agent</option>
