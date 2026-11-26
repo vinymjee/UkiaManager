@@ -1,4 +1,4 @@
-import { DATA_KEY, EMPTY_DATA, ALLOWED_COLLECTIONS } from "./types";
+import { DATA_KEY, EMPTY_DATA, ALLOWED_COLLECTIONS, TOUS_LES_DROITS } from "./types";
 import type {
   CaisseData,
   Collection,
@@ -17,6 +17,10 @@ import type {
   EcritureComptable,
   Parametres,
   Ligne,
+  Caisse,
+  OperationCaisse,
+  TransfertCaisse,
+  TypeOperationCaisse,
 } from "./types";
 import { sha256Hex, signJWT, verifyJWT } from "./auth";
 
@@ -68,7 +72,24 @@ async function getData(env: Env): Promise<CaisseData> {
   const valeur = await env.CAISSE_DB.get(DATA_KEY);
   if (!valeur) return structuredClone(EMPTY_DATA);
   try {
-    return JSON.parse(valeur) as CaisseData;
+    const d = JSON.parse(valeur) as CaisseData;
+    if (!d.utilisateurs) d.utilisateurs = [];
+    if (!d.clients) d.clients = [];
+    if (!d.factures) d.factures = [];
+    if (!d.devis) d.devis = [];
+    if (!d.facturesProForma) d.facturesProForma = [];
+    if (!d.recusPaiement) d.recusPaiement = [];
+    if (!d.bordereauxDepense) d.bordereauxDepense = [];
+    if (!d.ecrituresComptables) d.ecrituresComptables = [];
+    if (!d.caisses) d.caisses = [];
+    if (!d.operationsCaisse) d.operationsCaisse = [];
+    if (!d.transfertsCaisse) d.transfertsCaisse = [];
+    if (!d.parametres) d.parametres = EMPTY_DATA.parametres;
+    // normalize users: ensure droits array
+    for (const u of d.utilisateurs) {
+      if (!Array.isArray(u.droits)) u.droits = u.role === "SUPERVISEUR" ? [...TOUS_LES_DROITS] : [];
+    }
+    return d;
   } catch {
     return structuredClone(EMPTY_DATA);
   }
@@ -112,6 +133,12 @@ async function verifieToken(env: Env, request: Request): Promise<{ id: string; r
   if (!payload) return null;
   if (payload.exp && Date.now() >= payload.exp * 1000) return null;
   return { id: String(payload.sub), role: payload.role as Role, nom: String(payload.nom) };
+}
+
+function aDroit(data: CaisseData, me: { id: string; role: Role }, droit: string): boolean {
+  if (me.role === "SUPERVISEUR") return true;
+  const u = data.utilisateurs.find((x: any) => x.id === me.id);
+  return !!u?.droits?.includes(droit);
 }
 
 async function exporterComptabilite(data: CaisseData): Promise<EcritureComptable[]> {
@@ -232,106 +259,17 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       role: "SUPERVISEUR",
       motDePasseHash: await sha256Hex(body.motDePasse),
       actif: true,
+      droits: [...TOUS_LES_DROITS],
       creeLe: maintenant(),
     };
     data.utilisateurs.push(superviseur);
+    if (!data.caisses.find((c: any) => c.userId === superviseur.id)) {
+      data.caisses.push({ userId: superviseur.id, solde: 0, creeLe: maintenant(), majLe: maintenant() });
+    }
     await saveData(env, data);
-    return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role });
+    return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role, droits: superviseur.droits });
   }
 
-    // ==================== CRUD GENERIQUE (utilisateurs, clients) ====================
-    const collectionMatch = base.match(/^\/api\/([a-zA-Z]+)(?:\/([^/]+))?$/);
-    if (!collectionMatch) {
-      // routes specifiques ci-dessous
-    } else {
-      const collection = collectionMatch[1] as Collection;
-      const itemId = collectionMatch[2];
-
-      if (!ALLOWED_COLLECTIONS.includes(collection)) {
-        return erreur(`Collection inconnue: ${collection}`, 404);
-      }
-
-      const me = await verifieToken(env, request);
-      if (!me) return erreur("Non authentifie", 401);
-
-      const data = await getData(env);
-      let liste: any[] = data[collection];
-
-      if (request.method === "GET") {
-        if (itemId) {
-          const item = liste.find((x) => x.id === itemId);
-          if (!item) return erreur("Introuvable", 404);
-          return ok(item);
-        }
-        return ok(liste);
-      }
-
-      // Ecriture : superviseur requis pour utilisateurs ; agent autorise sur clients
-      if (collection === "utilisateurs" && me.role !== "SUPERVISEUR") {
-        return erreur("Reserve au superviseur", 403);
-      }
-
-      if (request.method === "POST") {
-        const body = await parseBody<any>(request);
-        if (!body) return erreur("Corps invalide");
-        const nouvelItem: any = { ...body, id: body.id || id(), creeLe: maintenant() };
-        if (collection === "utilisateurs") {
-          if (!body.nom || !body.email || !body.motDePasse || !body.role) {
-            return erreur("nom, email, motDePasse et role requis");
-          }
-          if (liste.some((u: any) => u.email === body.email)) return erreur("Email deja utilise");
-          nouvelItem.motDePasseHash = await sha256Hex(body.motDePasse);
-          delete nouvelItem.motDePasse;
-          nouvelItem.role = body.role;
-          nouvelItem.actif = body.actif !== false;
-        }
-        if (collection === "clients") {
-          if (!body.nom) return erreur("nom requis");
-        }
-        liste.push(nouvelItem);
-        data[collection] = liste;
-        await saveData(env, data);
-        return ok(nouvelItem);
-      }
-
-      if (request.method === "PUT") {
-        if (!itemId) return erreur("ID requis");
-        const body = await parseBody<any>(request);
-        if (!body) return erreur("Corps invalide");
-        const index = liste.findIndex((x) => x.id === itemId);
-        if (index === -1) return erreur("Introuvable", 404);
-        if (collection === "utilisateurs") {
-          if (me.role !== "SUPERVISEUR") return erreur("Reserve au superviseur", 403);
-          if (body.email && liste.some((u: any) => u.id !== itemId && u.email === body.email)) {
-            return erreur("Email deja utilise");
-          }
-          if (body.motDePasse) {
-            body.motDePasseHash = await sha256Hex(body.motDePasse);
-            delete body.motDePasse;
-          }
-        }
-        const misAJour = { ...liste[index], ...body, id: itemId };
-        liste[index] = misAJour;
-        data[collection] = liste;
-        await saveData(env, data);
-        return ok(misAJour);
-      }
-
-      if (request.method === "DELETE") {
-        if (!itemId) return erreur("ID requis");
-        if (collection === "utilisateurs" && me.role !== "SUPERVISEUR") {
-          return erreur("Reserve au superviseur", 403);
-        }
-        const index = liste.findIndex((x) => x.id === itemId);
-        if (index === -1) return erreur("Introuvable", 404);
-        const [supprime] = liste.splice(index, 1);
-        data[collection] = liste;
-        await saveData(env, data);
-        return ok(supprime);
-      }
-
-      return erreur("Methode non supportee", 405);
-    }
 
     // ==================== AUTH REQUISE pour le reste ====================
     const me = await verifieToken(env, request);
@@ -383,6 +321,46 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         facture.statut = "PAYEE";
         facture.payeeLe = maintenant();
         facture.modePaiement = body.mode || "especes";
+         // Recu automatique
+         const recu: RecuPaiement = {
+           id: id(),
+           numero: `REC-${Date.now()}`,
+           factureId: facture.id,
+           clientId: facture.clientId,
+           clientNom: facture.clientNom,
+           montant: facture.ttc,
+           date: maintenant(),
+           mode: facture.modePaiement || "especes",
+           agentId: facture.agentId,
+         };
+         if (!data.recusPaiement) data.recusPaiement = [];
+         data.recusPaiement.push(recu);
+         // Operation de caisse ENCAISSEMENT
+         const op: OperationCaisse = {
+           id: id(),
+           numero: `OP-${Date.now()}`,
+           type: "ENCAISSEMENT",
+           montant: facture.ttc,
+           libelle: `Paiement facture ${facture.numero} - ${facture.clientNom}`,
+           source: "FACTURE",
+           refId: facture.id,
+           userId: facture.agentId,
+           agentId: facture.agentId,
+           agentNom: facture.agentNom,
+           date: maintenant(),
+           creeLe: maintenant(),
+         };
+         if (!data.operationsCaisse) data.operationsCaisse = [];
+         data.operationsCaisse.push(op);
+         // Caisse solde
+         if (!data.caisses) data.caisses = [];
+         let caisse = data.caisses.find((c: any) => c.userId === facture.agentId);
+         if (!caisse) {
+           caisse = { userId: facture.agentId, solde: 0, creeLe: maintenant(), majLe: maintenant() };
+           data.caisses.push(caisse);
+         }
+         caisse.solde = (caisse.solde || 0) + facture.ttc;
+         caisse.majLe = maintenant();
       } else if (action === "annuler") {
         if (me.role !== "SUPERVISEUR") return erreur("Seul le superviseur peut annuler un paiement", 403);
         facture.statut = "ANNULEE";
@@ -566,5 +544,291 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       return ok(data.parametres);
     }
 
+    // ---------- Caisse (solde) ----------
+    if (base === "/api/caisses" && request.method === "GET") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      if (!data.caisses) data.caisses = [];
+      if (!data.caisses.find((c: any) => c.userId === me.id)) {
+        data.caisses.push({ userId: me.id, solde: 0, creeLe: maintenant(), majLe: maintenant() });
+        await saveData(env, data);
+      }
+      const caisse = data.caisses.find((c: any) => c.userId === me.id);
+      return ok(caisse);
+    }
+    if (base === "/api/caisses/tous" && request.method === "GET") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      if (!aDroit(data, me, "CAISSE_VOIR") && me.role !== "SUPERVISEUR") return erreur("Acces refuse", 403);
+      if (!data.caisses) data.caisses = [];
+      // ensure caisse exists for all users
+      for (const u of data.utilisateurs) {
+        if (!data.caisses.find((c: any) => c.userId === u.id)) {
+          data.caisses.push({ userId: u.id, solde: 0, creeLe: maintenant(), majLe: maintenant() });
+        }
+      }
+      const result = data.caisses.map((c: any) => {
+        const u = data.utilisateurs.find((x: any) => x.id === c.userId);
+        return { ...c, nom: u?.nom || c.userId };
+      });
+      await saveData(env, data);
+      return ok(result);
+    }
+
+    // ---------- Operations de caisse ----------
+    if (base === "/api/operations-caisse" && request.method === "GET") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      if (!aDroit(data, me, "CAISSE_VOIR")) return erreur("Acces refuse", 403);
+      if (!data.operationsCaisse) data.operationsCaisse = [];
+      const userId = url.searchParams.get("userId");
+      let ops = data.operationsCaisse;
+      if (me.role !== "SUPERVISEUR") ops = ops.filter((o: any) => o.userId === me.id);
+      else if (userId) ops = ops.filter((o: any) => o.userId === userId);
+      return ok(ops.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    }
+    if (base === "/api/operations-caisse" && request.method === "POST") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      const body = await parseBody<any>(request);
+      if (!body || !body.type || !body.montant || !body.libelle) return erreur("type, montant et libelle requis");
+      const type = body.type as TypeOperationCaisse;
+      if (type === "ENCAISSEMENT" && !aDroit(data, me, "CAISSE_ENCAISSEMENT")) return erreur("Acces refuse", 403);
+      if (type === "DECAISSEMENT" && !aDroit(data, me, "CAISSE_DECAISSEMENT")) return erreur("Acces refuse", 403);
+      if (!data.operationsCaisse) data.operationsCaisse = [];
+      if (!data.caisses) data.caisses = [];
+      const op: OperationCaisse = {
+        id: id(),
+        numero: `OP-${Date.now()}`,
+        type,
+        montant: Number(body.montant),
+        libelle: body.libelle,
+        source: "MANUEL",
+        refId: "",
+        userId: me.id,
+        agentId: me.id,
+        agentNom: me.nom,
+        date: body.date || maintenant(),
+        creeLe: maintenant(),
+      };
+      data.operationsCaisse.push(op);
+      let caisse = data.caisses.find((c: any) => c.userId === me.id);
+      if (!caisse) {
+        caisse = { userId: me.id, solde: 0, creeLe: maintenant(), majLe: maintenant() };
+        data.caisses.push(caisse);
+      }
+      if (type === "ENCAISSEMENT") caisse.solde = (caisse.solde || 0) + Number(body.montant);
+      else if (type === "DECAISSEMENT") caisse.solde = (caisse.solde || 0) - Number(body.montant);
+      caisse.majLe = maintenant();
+      await saveData(env, data);
+      return ok(op);
+    }
+
+    // ---------- Transferts de caisse ----------
+    if (base === "/api/transferts-caisse" && request.method === "GET") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      if (!aDroit(data, me, "TRANSFERTS_VOIR")) return erreur("Acces refuse", 403);
+      if (!data.transfertsCaisse) data.transfertsCaisse = [];
+      let ts = data.transfertsCaisse;
+      if (me.role !== "SUPERVISEUR") {
+        ts = ts.filter((t: any) => t.expediteurId === me.id || t.destinataireId === me.id);
+      }
+      return ok(ts.sort((a: any, b: any) => new Date(b.creeLe).getTime() - new Date(a.creeLe).getTime()));
+    }
+    if (base === "/api/transferts-caisse" && request.method === "POST") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      if (!aDroit(data, me, "TRANSFERTS_CREER")) return erreur("Acces refuse", 403);
+      const body = await parseBody<any>(request);
+      if (!body || !body.destinataireId || !body.montant) return erreur("destinataireId et montant requis");
+      const dest = data.utilisateurs.find((u: any) => u.id === body.destinataireId);
+      if (!dest) return erreur("Destinataire introuvable", 404);
+      if (dest.id === me.id) return erreur("Transfert vers soi-meme impossible");
+      if (!data.transfertsCaisse) data.transfertsCaisse = [];
+      const t: TransfertCaisse = {
+        id: id(),
+        numero: `TR-${Date.now()}`,
+        expediteurId: me.id,
+        expediteurNom: me.nom,
+        destinataireId: dest.id,
+        destinataireNom: dest.nom,
+        montant: Number(body.montant),
+        motif: body.motif || "",
+        statut: "EN_ATTENTE",
+        creeLe: maintenant(),
+      };
+      data.transfertsCaisse.push(t);
+      await saveData(env, data);
+      return ok(t);
+    }
+    const transfertMatch = base.match(/^\/api\/transferts-caisse\/([^/]+)\/(confirmer|rejeter|annuler)$/);
+    if (transfertMatch && request.method === "POST") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      const tid = transfertMatch[1];
+      const action = transfertMatch[2];
+      if (!data.transfertsCaisse) data.transfertsCaisse = [];
+      const t = data.transfertsCaisse.find((x: any) => x.id === tid);
+      if (!t) return erreur("Transfert introuvable", 404);
+      if (action === "confirmer") {
+        if (t.destinataireId !== me.id && me.role !== "SUPERVISEUR") return erreur("Seul le destinataire peut confirmer", 403);
+        if (t.statut !== "EN_ATTENTE") return erreur("Transfert deja traite");
+        // Debit expediteur, credit destinataire
+        if (!data.caisses) data.caisses = [];
+        if (!data.operationsCaisse) data.operationsCaisse = [];
+        let cExp = data.caisses.find((c: any) => c.userId === t.expediteurId);
+        if (!cExp) { cExp = { userId: t.expediteurId, solde: 0, creeLe: maintenant(), majLe: maintenant() }; data.caisses.push(cExp); }
+        let cDest = data.caisses.find((c: any) => c.userId === t.destinataireId);
+        if (!cDest) { cDest = { userId: t.destinataireId, solde: 0, creeLe: maintenant(), majLe: maintenant() }; data.caisses.push(cDest); }
+        cExp.solde = (cExp.solde || 0) - t.montant;
+        cDest.solde = (cDest.solde || 0) + t.montant;
+        cExp.majLe = maintenant();
+        cDest.majLe = maintenant();
+        // operations
+        data.operationsCaisse.push({
+          id: id(), numero: `OP-${Date.now()}-S`, type: "TRANSFERT_SORTANT", montant: t.montant,
+          libelle: `Transfert vers ${t.destinataireNom}`, source: "TRANSFERT", refId: t.id,
+          userId: t.expediteurId, agentId: t.expediteurId, agentNom: t.expediteurNom,
+          date: maintenant(), creeLe: maintenant(),
+        });
+        data.operationsCaisse.push({
+          id: id(), numero: `OP-${Date.now()}-E`, type: "TRANSFERT_ENTRANT", montant: t.montant,
+          libelle: `Transfert de ${t.expediteurNom}`, source: "TRANSFERT", refId: t.id,
+          userId: t.destinataireId, agentId: t.destinataireId, agentNom: t.destinataireNom,
+          date: maintenant(), creeLe: maintenant(),
+        });
+        t.statut = "CONFIRME";
+        t.confirmeLe = maintenant();
+        await saveData(env, data);
+        return ok(t);
+      }
+      if (action === "rejeter") {
+        if (t.destinataireId !== me.id && me.role !== "SUPERVISEUR") return erreur("Seul le destinataire peut rejeter", 403);
+        if (t.statut !== "EN_ATTENTE") return erreur("Transfert deja traite");
+        t.statut = "REJETE";
+        await saveData(env, data);
+        return ok(t);
+      }
+      if (action === "annuler") {
+        if (t.expediteurId !== me.id && me.role !== "SUPERVISEUR") return erreur("Seul l'expediteur peut annuler", 403);
+        if (t.statut !== "EN_ATTENTE") return erreur("Transfert deja traite");
+        t.statut = "ANNULE";
+        await saveData(env, data);
+        return ok(t);
+      }
+      return erreur("Action inconnue", 400);
+    }
+
+    // ---------- Droits ----------
+    if (base === "/api/droits" && request.method === "GET") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      return ok(TOUS_LES_DROITS);
+    }
+
+    // ==================== CRUD GENERIQUE (utilisateurs, clients) ====================
+    const collectionMatch = base.match(/^\/api\/([a-zA-Z]+)(?:\/([^/]+))?$/);
+    if (!collectionMatch) {
+      // routes specifiques ci-dessous
+    } else {
+      const collection = collectionMatch[1] as Collection;
+      const itemId = collectionMatch[2];
+
+      if (!ALLOWED_COLLECTIONS.includes(collection)) {
+        return erreur(`Collection inconnue: ${collection}`, 404);
+      }
+
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+
+      const data = await getData(env);
+      let liste: any[] = data[collection];
+
+      if (request.method === "GET") {
+        if (itemId) {
+          const item = liste.find((x) => x.id === itemId);
+          if (!item) return erreur("Introuvable", 404);
+          return ok(item);
+        }
+        return ok(liste);
+      }
+
+      // Ecriture : superviseur requis pour utilisateurs ; agent autorise sur clients
+      if (collection === "utilisateurs" && me.role !== "SUPERVISEUR") {
+        return erreur("Reserve au superviseur", 403);
+      }
+
+      if (request.method === "POST") {
+        const body = await parseBody<any>(request);
+        if (!body) return erreur("Corps invalide");
+        const nouvelItem: any = { ...body, id: body.id || id(), creeLe: maintenant() };
+        if (collection === "utilisateurs") {
+          if (!body.nom || !body.email || !body.motDePasse || !body.role) {
+            return erreur("nom, email, motDePasse et role requis");
+          }
+          if (liste.some((u: any) => u.email === body.email)) return erreur("Email deja utilise");
+          nouvelItem.motDePasseHash = await sha256Hex(body.motDePasse);
+          delete nouvelItem.motDePasse;
+          nouvelItem.role = body.role;
+          nouvelItem.actif = body.actif !== false;
+           nouvelItem.droits = Array.isArray(body.droits) ? body.droits : [];
+           if (nouvelItem.role === "SUPERVISEUR") nouvelItem.droits = [...TOUS_LES_DROITS];
+           if (!data.caisses.find((c: any) => c.userId === nouvelItem.id)) {
+             data.caisses.push({ userId: nouvelItem.id, solde: 0, creeLe: maintenant(), majLe: maintenant() });
+           }
+        }
+        if (collection === "clients") {
+          if (!body.nom) return erreur("nom requis");
+        }
+        liste.push(nouvelItem);
+        data[collection] = liste;
+        await saveData(env, data);
+        return ok(nouvelItem);
+      }
+
+      if (request.method === "PUT") {
+        if (!itemId) return erreur("ID requis");
+        const body = await parseBody<any>(request);
+        if (!body) return erreur("Corps invalide");
+        const index = liste.findIndex((x) => x.id === itemId);
+        if (index === -1) return erreur("Introuvable", 404);
+        if (collection === "utilisateurs") {
+          if (me.role !== "SUPERVISEUR") return erreur("Reserve au superviseur", 403);
+          if (body.email && liste.some((u: any) => u.id !== itemId && u.email === body.email)) {
+            return erreur("Email deja utilise");
+          }
+          if (body.motDePasse) {
+            body.motDePasseHash = await sha256Hex(body.motDePasse);
+            delete body.motDePasse;
+          }
+          if (Array.isArray(body.droits)) {
+            body.droits = body.droits;
+            if (body.role === "SUPERVISEUR" || liste[index].role === "SUPERVISEUR") body.droits = [...TOUS_LES_DROITS];
+          }
+          if (body.droits === undefined) body.droits = liste[index].droits || [];
+        }
+        const misAJour = { ...liste[index], ...body, id: itemId };
+        liste[index] = misAJour;
+        data[collection] = liste;
+        await saveData(env, data);
+        return ok(misAJour);
+      }
+
+      if (request.method === "DELETE") {
+        if (!itemId) return erreur("ID requis");
+        if (collection === "utilisateurs" && me.role !== "SUPERVISEUR") {
+          return erreur("Reserve au superviseur", 403);
+        }
+        const index = liste.findIndex((x) => x.id === itemId);
+        if (index === -1) return erreur("Introuvable", 404);
+        const [supprime] = liste.splice(index, 1);
+        data[collection] = liste;
+        await saveData(env, data);
+        return ok(supprime);
+      }
+
+      return erreur("Methode non supportee", 405);
+    }
     return erreur("Route non trouvee", 404);
   }

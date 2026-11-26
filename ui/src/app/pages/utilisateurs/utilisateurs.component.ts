@@ -3,7 +3,7 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
-import { Utilisateur } from "../../models";
+import { Utilisateur, TOUS_LES_DROITS } from "../../models";
 
 @Component({
   selector: "app-utilisateurs",
@@ -54,6 +54,17 @@ import { Utilisateur } from "../../models";
             <option value="AGENT">Agent</option>
             <option value="SUPERVISEUR">Superviseur</option>
           </select>
+        </div>
+
+        <div class="form-group full" *ngIf="user.role === 'AGENT'">
+          <label class="form-label">Droits / Autorisations</label>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--space-2); margin-top: var(--space-2);">
+            <label *ngFor="let d of droitsDisponibles" style="display:flex; align-items:center; gap: var(--space-2); font-size: var(--text-sm); cursor:pointer;">
+              <input type="checkbox" [checked]="hasDroit(d)" (change)="toggleDroit(d)" />
+              {{ d }}
+            </label>
+          </div>
+          <span class="form-hint">Le superviseur poss&egrave;de tous les droits automatiquement.</span>
         </div>
 
         <div class="form-group">
@@ -111,7 +122,15 @@ export class UtilisateursComponent implements OnInit {
   formVisible = false;
   chargement = false;
   userEdite: Utilisateur | null = null;
-  user: Utilisateur = { id: "", nom: "", email: "", role: "AGENT", actif: true };
+  user: Utilisateur = { id: "", nom: "", email: "", role: "AGENT", actif: true, droits: [] };
+  droitsDisponibles = TOUS_LES_DROITS;
+  toggleDroit(d: string) {
+    if (!this.user.droits) this.user.droits = [];
+    const i = this.user.droits.indexOf(d);
+    if (i >= 0) this.user.droits.splice(i, 1);
+    else this.user.droits.push(d);
+  }
+  hasDroit(d: string) { return (this.user.droits || []).includes(d); }
 
   async ngOnInit() { this.charger(); }
 
@@ -122,7 +141,7 @@ export class UtilisateursComponent implements OnInit {
 
   editer(u: Utilisateur | null) {
     this.userEdite = u;
-    this.user = u ? { ...u } : { id: "", nom: "", email: "", role: "AGENT", actif: true };
+    this.user = u ? { ...u, droits: u.droits || [] } : { id: "", nom: "", email: "", role: "AGENT", actif: true, droits: [] };
     this.formVisible = true;
     this.erreur = "";
     this.message = "";

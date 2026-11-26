@@ -3,6 +3,7 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
+import { PrintService } from "../../services/print.service";
 import { Devis, Client } from "../../models";
 
 @Component({
@@ -113,6 +114,7 @@ import { Devis, Client } from "../../models";
                 <button *ngIf="d.statut === 'BROUILLON'" class="btn btn-outline btn-sm" (click)="changerStatut(d, 'ENVOYEE')">Envoyer</button>
                 <button *ngIf="d.statut === 'ENVOYEE'" class="btn btn-success btn-sm" (click)="changerStatut(d, 'ACCEPTE')">Accepter</button>
                 <button *ngIf="d.statut === 'ENVOYEE'" class="btn btn-outline btn-sm" (click)="changerStatut(d, 'REFUSE')">Refuser</button>
+                <button class="btn btn-outline btn-sm" (click)="imprimer(d)">Imprimer</button>
                 <button *ngIf="d.statut !== 'ANNULEE'" class="btn btn-danger btn-sm" (click)="changerStatut(d, 'ANNULEE')">Annuler</button>
               </td>
             </tr>
@@ -126,6 +128,7 @@ import { Devis, Client } from "../../models";
 export class DevisComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
+  print = inject(PrintService);
 
   devis: Devis[] = [];
   clients: Client[] = [];
@@ -210,6 +213,24 @@ export class DevisComponent implements OnInit {
     const r = await this.api.post(`/devis/${d.id}/${action}`);
     if (r.ok) await this.charger();
     else this.erreur = r.erreur || "Erreur.";
+  }
+
+  imprimer(d: Devis) {
+    this.print.printDocument({
+      titre: "Devis",
+      numero: d.numero,
+      date: d.date,
+      clientNom: d.clientNom,
+      total: d.ttc,
+      lignes: d.lignes,
+      details: [
+        { label: "HT", value: d.ht.toFixed(2) },
+        { label: "TVA", value: d.tva.toFixed(2) },
+        { label: "TTC", value: d.ttc.toFixed(2) },
+        { label: "Validité", value: d.validite || "-" },
+        { label: "Statut", value: d.statut },
+      ],
+    });
   }
 
   statutClass(s: string) {

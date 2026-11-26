@@ -8,6 +8,7 @@ export interface Utilisateur {
   email: string;
   role: Role;
   actif: boolean;
+  droits?: string[];
 }
 
 export interface Client {
@@ -128,6 +129,60 @@ export interface CompteExploitation {
   resultat: number;
   ecritures: EcritureComptable[];
 }
+
+export type TypeOperationCaisse = "ENCAISSEMENT" | "DECAISSEMENT" | "TRANSFERT_ENTRANT" | "TRANSFERT_SORTANT";
+
+export interface Caisse {
+  userId: string;
+  solde: number;
+  nom?: string;
+  creeLe: string;
+  majLe: string;
+}
+
+export interface OperationCaisse {
+  id: string;
+  numero: string;
+  type: TypeOperationCaisse;
+  montant: number;
+  libelle: string;
+  source: string;
+  refId: string;
+  userId: string;
+  agentId: string;
+  agentNom: string;
+  date: string;
+  creeLe: string;
+}
+
+export interface TransfertCaisse {
+  id: string;
+  numero: string;
+  expediteurId: string;
+  expediteurNom: string;
+  destinataireId: string;
+  destinataireNom: string;
+  montant: number;
+  motif: string;
+  statut: "EN_ATTENTE" | "CONFIRME" | "REJETE" | "ANNULE";
+  creeLe: string;
+  confirmeLe?: string;
+}
+
+export const TOUS_LES_DROITS: string[] = [
+  "FACTURES_VOIR", "FACTURES_CREER", "FACTURES_ENVOYER", "FACTURES_PAYER", "FACTURES_ANNULER", "FACTURES_IMPRIMER",
+  "DEVIS_VOIR", "DEVIS_CREER", "DEVIS_ENVOYER", "DEVIS_ACCEPTER", "DEVIS_REFUSER", "DEVIS_ANNULER", "DEVIS_IMPRIMER",
+  "PROFORMA_VOIR", "PROFORMA_CREER", "PROFORMA_IMPRIMER",
+  "BORDEREAUX_VOIR", "BORDEREAUX_CREER", "BORDEREAUX_VALIDER", "BORDEREAUX_ANNULER", "BORDEREAUX_IMPRIMER",
+  "CAISSE_VOIR", "CAISSE_ENCAISSEMENT", "CAISSE_DECAISSEMENT",
+  "TRANSFERTS_VOIR", "TRANSFERTS_CREER", "TRANSFERTS_CONFIRMER",
+  "REÇUS_VOIR", "REÇUS_IMPRIMER",
+  "JOURNAL_VOIR", "JOURNAL_CREER",
+  "EXPLOITATION_VOIR",
+  "CLIENTS_VOIR", "CLIENTS_CREER", "CLIENTS_MODIFIER", "CLIENTS_SUPPRIMER",
+  "UTILISATEURS_VOIR", "UTILISATEURS_GERER",
+  "PARAMETRES_MODIFIER",
+];
 
 export interface ApiResponse<T> {
   ok: boolean;

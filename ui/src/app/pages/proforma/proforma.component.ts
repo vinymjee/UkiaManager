@@ -3,6 +3,7 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
+import { PrintService } from "../../services/print.service";
 import { FactureProForma, Client } from "../../models";
 
 @Component({
@@ -92,7 +93,7 @@ import { FactureProForma, Client } from "../../models";
         <table class="data-table">
           <thead>
             <tr>
-              <th>Numéro</th><th>Client</th><th>Date</th><th>HT</th><th>TVA</th><th>TTC</th>
+              <th>Numéro</th><th>Client</th><th>Date</th><th>HT</th><th>TVA</th><th>TTC</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -103,6 +104,7 @@ import { FactureProForma, Client } from "../../models";
               <td>{{ p.ht | number:'1.0-2' }}</td>
               <td>{{ p.tva | number:'1.0-2' }}</td>
               <td>{{ p.ttc | number:'1.0-2' }}</td>
+              <td class="table-actions"><button class="btn btn-outline btn-sm" (click)="imprimer(p)">Imprimer</button></td>
             </tr>
             <tr *ngIf="proformas.length === 0"><td colspan="6" class="empty-state">Aucune facture pro forma enregistrée.</td></tr>
           </tbody>
@@ -114,6 +116,7 @@ import { FactureProForma, Client } from "../../models";
 export class ProformaComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
+  print = inject(PrintService);
 
   proformas: FactureProForma[] = [];
   clients: Client[] = [];
@@ -190,5 +193,21 @@ export class ProformaComponent implements OnInit {
     } else {
       this.erreur = r.erreur || "Erreur lors de l'enregistrement.";
     }
+  }
+
+  imprimer(p: FactureProForma) {
+    this.print.printDocument({
+      titre: "Facture Pro Forma",
+      numero: p.numero,
+      date: p.date,
+      clientNom: p.clientNom,
+      total: p.ttc,
+      lignes: p.lignes,
+      details: [
+        { label: "HT", value: p.ht.toFixed(2) },
+        { label: "TVA", value: p.tva.toFixed(2) },
+        { label: "TTC", value: p.ttc.toFixed(2) },
+      ],
+    });
   }
 }

@@ -15,6 +15,14 @@ export class AuthService {
   readonly isSuperviseur = computed(() => this.utilisateurSignal()?.role === "SUPERVISEUR");
   readonly isAgent = computed(() => this.utilisateurSignal()?.role === "AGENT");
 
+  hasDroit(droit: string): boolean {
+    const u = this.utilisateurSignal();
+    if (!u) return false;
+    if (u.role === "SUPERVISEUR") return true;
+    if (!Array.isArray(u.droits)) return true; // backward compat
+    return u.droits.includes(droit);
+  }
+
   constructor(private router: Router) {
     const saved = localStorage.getItem("ukia_token");
     const savedUser = localStorage.getItem("ukia_user");

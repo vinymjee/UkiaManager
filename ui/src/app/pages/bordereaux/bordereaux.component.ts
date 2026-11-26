@@ -3,6 +3,7 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
+import { PrintService } from "../../services/print.service";
 import { BordereauDepense } from "../../models";
 
 @Component({
@@ -100,6 +101,7 @@ import { BordereauDepense } from "../../models";
               <td>{{ b.total | number:'1.0-2' }}</td>
               <td><span class="badge" [class]="'badge-' + statutClass(b.statut)">{{ b.statut }}</span></td>
               <td class="table-actions">
+                <button class="btn btn-outline btn-sm" (click)="imprimer(b)">Imprimer</button>
                 <button *ngIf="b.statut === 'BROUILLON'" class="btn btn-outline btn-sm" (click)="changerStatut(b, 'valider')">Valider</button>
                 <button *ngIf="b.statut !== 'ANNULEE'" class="btn btn-danger btn-sm" (click)="changerStatut(b, 'annuler')">Annuler</button>
               </td>
@@ -114,6 +116,7 @@ import { BordereauDepense } from "../../models";
 export class BordereauxComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
+  print = inject(PrintService);
 
   bordereaux: BordereauDepense[] = [];
   erreur = "";
@@ -187,6 +190,21 @@ export class BordereauxComponent implements OnInit {
     const r = await this.api.post(`/bordereaux/${b.id}/${action}`);
     if (r.ok) await this.charger();
     else this.erreur = r.erreur || "Erreur.";
+  }
+
+  imprimer(b: BordereauDepense) {
+    this.print.printDocument({
+      titre: "Bordereau de dépense",
+      numero: b.numero,
+      date: b.date,
+      fournisseur: b.fournisseur,
+      total: b.total,
+      lignes: b.lignes,
+      details: [
+        { label: "Total", value: b.total.toFixed(2) },
+        { label: "Statut", value: b.statut },
+      ],
+    });
   }
 
   statutClass(s: string) {

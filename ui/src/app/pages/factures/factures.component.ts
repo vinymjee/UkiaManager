@@ -3,6 +3,7 @@ import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
+import { PrintService } from "../../services/print.service";
 import { Facture, Client } from "../../models";
 
 @Component({
@@ -115,6 +116,7 @@ import { Facture, Client } from "../../models";
                 <button *ngIf="f.statut === 'BROUILLON'" class="btn btn-outline btn-sm" (click)="envoyer(f)">Envoyer</button>
                 <button *ngIf="f.statut === 'ENVOYEE'" class="btn btn-success btn-sm" (click)="payer(f)">Marquer payée</button>
                 <button *ngIf="f.statut !== 'ANNULEE' && auth.isSuperviseur()" class="btn btn-danger btn-sm" (click)="annuler(f)">Annuler</button>
+                <button class="btn btn-outline btn-sm" (click)="imprimer(f)">Imprimer</button>
                 <button class="btn btn-ghost btn-sm" (click)="ouvrirFormulaire(f)">Voir</button>
               </td>
             </tr>
@@ -128,6 +130,7 @@ import { Facture, Client } from "../../models";
 export class FacturesComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
+  print = inject(PrintService);
 
   factures: Facture[] = [];
   clients: Client[] = [];
@@ -235,6 +238,23 @@ export class FacturesComponent implements OnInit {
     const r = await this.api.post(`/factures/${f.id}/annuler`);
     if (r.ok) await this.charger();
     else this.erreur = r.erreur || "Erreur.";
+  }
+
+  imprimer(f: Facture) {
+    this.print.printDocument({
+      titre: "Facture",
+      numero: f.numero,
+      date: f.date,
+      clientNom: f.clientNom,
+      total: f.ttc,
+      lignes: f.lignes,
+      details: [
+        { label: "HT", value: f.ht.toFixed(2) },
+        { label: "TVA", value: f.tva.toFixed(2) },
+        { label: "TTC", value: f.ttc.toFixed(2) },
+        { label: "Statut", value: f.statut },
+      ],
+    });
   }
 
   statutClass(s: string) {

@@ -96,7 +96,7 @@ import { Facture, Devis, FactureProForma, RecuPaiement, BordereauDepense, Parame
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3);">
         <button class="btn btn-outline" (click)="nouvelleFacture()">&#128203; Nouvelle facture</button>
         <button class="btn btn-outline" (click)="nouveauDevis()">&#128204; Nouveau devis</button>
-        <button class="btn btn-outline" (click)="nouveauRecu()">&#128179; Nouveau re&ccedil;u</button>
+        <button class="btn btn-outline" routerLink="/caisse">&#128176; Op&eacute;ration de caisse</button>
         <button class="btn btn-outline" (click)="nouveauBordereau()">&#128202; Nouveau bordereau</button>
         <button class="btn btn-outline" routerLink="/clients">&#128100; Gérer les clients</button>
         <button class="btn btn-outline" routerLink="/journal">&#128201; Journal comptable</button>
