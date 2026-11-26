@@ -196,6 +196,127 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
+async function documentPublicHtml(request: Request, env: Env, type: string, docId: string): Promise<Response> {
+  const data = await getData(env);
+  let titre = "Document";
+  let numero = "";
+  let date = "";
+  let client = "";
+  let lignes: any[] = [];
+  let total = 0;
+  let details: { label: string; value: string }[] = [];
+
+  if (type === "facture") {
+    const f = data.factures.find((x) => x.id === docId);
+    if (!f) return new Response("Introuvable", { status: 404 });
+    titre = "FACTURE"; numero = f.numero; date = f.date; client = f.clientNom;
+    lignes = f.lignes || []; total = f.ttc;
+    details = [
+      { label: "HT", value: (f.ht || 0).toFixed(2) + " FCFA" },
+      { label: "TVA", value: (f.tva || 0).toFixed(2) + " FCFA" },
+      { label: "TTC", value: (f.ttc || 0).toFixed(2) + " FCFA" },
+      { label: "Statut", value: f.statut },
+    ];
+  } else if (type === "recu") {
+    const r = data.recusPaiement.find((x) => x.id === docId || x.factureId === docId);
+    if (!r) return new Response("Introuvable", { status: 404 });
+    const f = data.factures.find((x) => x.id === r.factureId);
+    titre = "RECU DE PAIEMENT"; numero = f?.numero || r.numero; date = r.date; client = r.clientNom;
+    lignes = f?.lignes || []; total = r.montant;
+    details = [
+      { label: "Montant versé", value: r.montant.toFixed(2) + " FCFA" },
+      { label: "Reste", value: (f ? Math.max(0, f.ttc - r.montant) : 0).toFixed(2) + " FCFA" },
+      { label: "Mode", value: r.mode },
+    ];
+  } else if (type === "devis") {
+    const d = data.devis.find((x) => x.id === docId);
+    if (!d) return new Response("Introuvable", { status: 404 });
+    titre = "DEVIS"; numero = d.numero; date = d.date; client = d.clientNom;
+    lignes = d.lignes || []; total = d.ttc;
+    details = [{ label: "TTC", value: (d.ttc || 0).toFixed(2) + " FCFA" }, { label: "Statut", value: d.statut }];
+  } else if (type === "proforma") {
+    const p = data.facturesProForma.find((x) => x.id === docId);
+    if (!p) return new Response("Introuvable", { status: 404 });
+    titre = "FACTURE PRO FORMA"; numero = p.numero; date = p.date; client = p.clientNom;
+    lignes = p.lignes || []; total = p.ttc;
+    details = [{ label: "TTC", value: (p.ttc || 0).toFixed(2) + " FCFA" }];
+  } else if (type === "bordereau") {
+    const b = data.bordereauxDepense.find((x) => x.id === docId);
+    if (!b) return new Response("Introuvable", { status: 404 });
+    titre = "BORDEREAU DE DEPENSE"; numero = b.numero; date = b.date; client = b.fournisseur;
+    lignes = b.lignes || []; total = b.total;
+    details = [{ label: "Total", value: (b.total || 0).toFixed(2) + " FCFA" }, { label: "Statut", value: b.statut }];
+  } else if (type === "operation") {
+    const o = (data.operationsCaisse || []).find((x) => x.id === docId);
+    if (!o) return new Response("Introuvable", { status: 404 });
+    titre = (o.type === "DECAISSEMENT" || o.type === "TRANSFERT_SORTANT") ? "BORDEREAU DE DEPENSE" : "BORDEREAU DE VERSEMENT";
+    numero = o.numero; date = o.date; client = o.libelle; total = o.montant;
+    details = [{ label: "Type", value: o.type }, { label: "Montant", value: o.montant.toFixed(2) + " FCFA" }];
+  } else {
+    return new Response("Type inconnu", { status: 404 });
+  }
+
+  const baseUrl = new URL(request.url).origin;
+  const logoUrl = `${baseUrl}/assets/logo-ukia.png`;
+  const fontUrl = `${baseUrl}/assets/fonts/AVA.ttf`;
+  const lignesHtml = lignes.length
+    ? lignes.map((l) => `<tr><td>${l.description || ""}</td><td class="right">${l.quantite}</td><td class="right">${l.prixUnitaire}</td><td class="right">${((l.tva || 0) * 100).toFixed(0)}%</td><td class="right">${(l.total || 0).toFixed(2)}</td></tr>`).join("")
+    : `<tr><td>Paiement</td><td class="right">1</td><td class="right">${total.toFixed(2)}</td><td class="right">0%</td><td class="right">${total.toFixed(2)}</td></tr>`;
+  const detailsHtml = details.map((d) => `<tr><td>${d.label}</td><td class="right">${d.value}</td></tr>`).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${titre} ${numero}</title>
+<style>
+@font-face{font-family:'AVA';src:url('${fontUrl}') format('truetype');font-weight:normal;}
+@page{size:A4;margin:10mm;}
+body{font-family:"Segoe UI",Arial,sans-serif;color:#111;font-size:12px;margin:0;padding:18px;max-width:800px;margin:0 auto;}
+.rec-entete{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #000;padding-bottom:8px;}
+.rec-logo{width:64px;height:auto;}
+.rec-nom{font-family:'AVA',Arial,sans-serif;font-size:29px;letter-spacing:5px;font-weight:800;-webkit-text-stroke:0.4px currentColor;}
+.rec-slogan{font-family:Georgia,serif;font-size:11px;font-style:italic;color:#444;}
+.rec-republique{font-size:12px;font-weight:700;white-space:nowrap;}
+.rec-contacts{font-size:9px;line-height:1.45;margin-top:3px;}
+.rec-titre-centre{text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;margin:12px 0 8px;border-bottom:1px solid #000;padding-bottom:6px;}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:11px;}
+th,td{border:1px solid #999;padding:4px 6px;text-align:left;}
+th{background:#eee;}
+.right{text-align:right;}
+.total{font-weight:800;background:#f5f5f5;}
+.rec-infos{margin-top:6px;}
+.rec-client{margin-top:2px;}
+.rec-pub{background:#e7f7ed;color:#166534;border:1px solid #86efac;padding:8px;text-align:center;font-size:11px;margin:8px 0;}
+.rec-pied{margin-top:18px;text-align:center;font-size:9px;color:#555;}
+@media print{.rec-pub{display:none;} body{padding:0;}}
+</style></head><body>
+<div class="rec-pub">Document vérifié — visible sans connexion</div>
+<div class="rec-entete">
+  <div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <img src="${logoUrl}" alt="UKIA LABS" class="rec-logo">
+      <div><div class="rec-nom">UKIA LABS</div><div class="rec-slogan">Le futur ici et maintenant</div></div>
+    </div>
+    <div class="rec-contacts"><b>e-m@il :</b> contact@ukialabscg.com<br><b>Web :</b> www.ukialabscg.com<br><b>Tel :</b> +242 06 969 94 92</div>
+  </div>
+  <div class="rec-republique">R&eacute;publique du Congo</div>
+</div>
+<div class="rec-titre-centre">${titre}</div>
+<div class="rec-infos">
+  <div style="display:flex;justify-content:space-between;"><span><b>Numéro :</b> ${numero}</span><span><b>Date :</b> ${date?.slice(0, 10) || ""}</span></div>
+  <div class="rec-client"><b>Client :</b> ${client || "-"}</div>
+</div>
+<table><thead><tr><th>Désignation</th><th>Qté</th><th>P.U.</th><th>TVA</th><th>Total</th></tr></thead>
+<tbody>${lignesHtml}<tr class="total"><td colspan="4">Total</td><td class="right">${total.toFixed(2)} FCFA</td></tr></tbody></table>
+<table style="margin-top:10px;"><tbody>${detailsHtml}</tbody></table>
+<div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
+</body></html>`;
+
+  return new Response(html, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=3600" },
+  });
+}
+
 async function handleRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const base = urlBase(url);
@@ -271,6 +392,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role, droits: superviseur.droits, titre: superviseur.titre, cachet: superviseur.cachet });
   }
 
+  // ==================== DOCUMENT PUBLIC (sans autorisation, pour QR code) ====================
+  const publicMatch = base.match(/^\/api\/public\/doc\/([a-zA-Z]+)\/([^/]+)$/);
+  if (publicMatch && request.method === "GET") {
+    return documentPublicHtml(request, env, publicMatch[1], publicMatch[2]);
+  }
 
     // ==================== AUTH REQUISE pour le reste ====================
     const me = await verifieToken(env, request);

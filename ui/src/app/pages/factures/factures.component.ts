@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
+import { QrService } from "../../services/qr.service";
 import { Facture, Client } from "../../models";
 
 @Component({
@@ -131,6 +132,7 @@ export class FacturesComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
   print = inject(PrintService);
+  qr = inject(QrService);
 
   factures: Facture[] = [];
   clients: Client[] = [];
@@ -246,6 +248,7 @@ export class FacturesComponent implements OnInit {
       numero: f.numero,
       date: f.date,
       clientNom: f.clientNom,
+      qrUrl: this.qr.docUrl("facture", f.id),
       total: f.ttc,
       lignes: f.lignes,
       details: [

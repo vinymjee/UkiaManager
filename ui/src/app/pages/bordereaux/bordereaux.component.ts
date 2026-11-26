@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
+import { QrService } from "../../services/qr.service";
 import { BordereauDepense } from "../../models";
 
 @Component({
@@ -117,6 +118,7 @@ export class BordereauxComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
   print = inject(PrintService);
+  qr = inject(QrService);
 
   bordereaux: BordereauDepense[] = [];
   erreur = "";
@@ -198,6 +200,7 @@ export class BordereauxComponent implements OnInit {
       numero: b.numero,
       date: b.date,
       fournisseur: b.fournisseur,
+      qrUrl: this.qr.docUrl("bordereau", b.id),
       total: b.total,
       lignes: b.lignes,
       details: [

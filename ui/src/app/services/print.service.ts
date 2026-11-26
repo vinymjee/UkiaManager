@@ -1,7 +1,9 @@
-import { Injectable } from "@angular/core";
+import { Injectable, inject } from "@angular/core";
+import { QrService } from "./qr.service";
 
 @Injectable({ providedIn: "root" })
 export class PrintService {
+  qr = inject(QrService);
   private baseUrl(): string {
     return window.location.origin;
   }
@@ -46,6 +48,10 @@ export class PrintService {
       .rec-sign b { color:#000; }
       .rec-cachet { margin-top:6px; border:1px dashed #777; padding:6px 10px; display:inline-block; font-size:9.5px; color:#333; }
       .rec-pied { margin-top:18px; text-align:center; font-size:8.5px; color:#555; line-height:1.4; }
+      .rec-qr-block { margin-top:14px; display:flex; align-items:flex-end; justify-content:space-between; }
+      .rec-qr { text-align:center; }
+      .rec-qr svg { display:block; border:1px solid #ccc; padding:2px; }
+      .rec-qr-label { font-size:7.5px; color:#555; margin-top:2px; max-width:96px; line-height:1.2; }
       @media print { body { margin:0; } }
     `;
   }
@@ -73,10 +79,13 @@ export class PrintService {
     `;
   }
 
-  /** Impression d'un document avec l'en-tête partagé */
-  printWithHeader(docTitle: string, bodyHtml: string) {
+  /** Impression d'un document avec l'en-tête partagé et un QR code */
+  printWithHeader(docTitle: string, bodyHtml: string, qrUrl?: string) {
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) return;
+    const qrBlock = qrUrl
+      ? `<div class="rec-qr-block"><div></div>${this.qr.block(qrUrl)}</div>`
+      : "";
     win.document.write(`
       <!DOCTYPE html>
       <html lang="fr">
@@ -89,6 +98,7 @@ export class PrintService {
         <div class="rec-print">
           ${this.headerHtml()}
           ${bodyHtml}
+          ${qrBlock}
         </div>
       </body>
       </html>
@@ -129,7 +139,7 @@ export class PrintService {
     win.document.close();
   }
 
-  printDocument(doc: { titre: string; numero: string; date: string; lignes?: any[]; total?: number; clientNom?: string; fournisseur?: string; montant?: number; mode?: string; details?: { label: string; value: string }[] }) {
+  printDocument(doc: { titre: string; numero: string; date: string; lignes?: any[]; total?: number; clientNom?: string; fournisseur?: string; montant?: number; mode?: string; qrUrl?: string; details?: { label: string; value: string }[] }) {
     // Le document utilise désormais l'en-tête partagé
     let html = `
       <hr class="rec-sep"/>
@@ -159,6 +169,6 @@ export class PrintService {
       html += `<p style="font-size:18px;font-weight:bold;margin-top:16px;">Montant : ${doc.montant.toFixed(2)}</p>`;
     }
     html += `<div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>`;
-    this.printWithHeader(doc.titre, html);
+    this.printWithHeader(doc.titre, html, doc.qrUrl);
   }
 }

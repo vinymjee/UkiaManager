@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
+import { QrService } from "../../services/qr.service";
 import { RecuPaiement, Facture } from "../../models";
 
 @Component({
@@ -55,6 +56,7 @@ import { RecuPaiement, Facture } from "../../models";
 export class RecusComponent implements OnInit {
   api = inject(ApiService);
   print = inject(PrintService);
+  qr = inject(QrService);
   auth = inject(AuthService);
 
   recus: RecuPaiement[] = [];
@@ -113,7 +115,7 @@ export class RecusComponent implements OnInit {
       </div>
       <div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
     `;
-    this.print.printWithHeader("Reçu de paiement", bodyHtml);
+    this.print.printWithHeader("Reçu de paiement", bodyHtml, this.qr.docUrl("recu", r.id));
   }
 
   montantEnLettres(n: number): string {

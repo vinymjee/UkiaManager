@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
+import { QrService } from "../../services/qr.service";
 import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Facture } from "../../models";
 
 @Component({
@@ -174,6 +175,7 @@ export class CaisseComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
   print = inject(PrintService);
+  qr = inject(QrService);
 
   caisse: Caisse | null = null;
   soldes: any[] = [];
@@ -312,7 +314,7 @@ export class CaisseComponent implements OnInit {
       </div>
       <div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
     `;
-    this.print.printWithHeader("Reçu de paiement", bodyHtml);
+    this.print.printWithHeader("Reçu de paiement", bodyHtml, this.qr.docUrl("recu", r.id));
   }
 
   imprimerBordereau(o: OperationCaisse) {
@@ -348,7 +350,7 @@ export class CaisseComponent implements OnInit {
       </div>
       <div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
     `;
-    this.print.printWithHeader(estDepense ? "Bordereau de dépense" : "Bordereau de versement", bodyHtml);
+    this.print.printWithHeader(estDepense ? "Bordereau de dépense" : "Bordereau de versement", bodyHtml, this.qr.docUrl("operation", o.id));
   }
 
   imprimerHistorique() {

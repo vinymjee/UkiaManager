@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
+import { QrService } from "../../services/qr.service";
 import { FactureProForma, Client } from "../../models";
 
 @Component({
@@ -117,6 +118,7 @@ export class ProformaComponent implements OnInit {
   api = inject(ApiService);
   auth = inject(AuthService);
   print = inject(PrintService);
+  qr = inject(QrService);
 
   proformas: FactureProForma[] = [];
   clients: Client[] = [];
@@ -201,6 +203,7 @@ export class ProformaComponent implements OnInit {
       numero: p.numero,
       date: p.date,
       clientNom: p.clientNom,
+      qrUrl: this.qr.docUrl("proforma", p.id),
       total: p.ttc,
       lignes: p.lignes,
       details: [
