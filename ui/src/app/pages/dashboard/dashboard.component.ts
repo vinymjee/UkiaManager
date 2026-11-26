@@ -52,6 +52,11 @@ import { Facture, Devis, FactureProForma, RecuPaiement, BordereauDepense, Parame
         <div class="stat-value">{{ solde | number:'1.0-2' }}</div>
         <div class="stat-label">Solde caisse &rarr;</div>
       </a>
+      <a *ngIf="auth.hasDroit('CAISSE_VOIR')" routerLink="/historique" class="stat-card stat-link">
+        <div class="stat-icon">&#128202;</div>
+        <div class="stat-value">{{ operations | number:'1.0-0' }}</div>
+        <div class="stat-label">Historique caisse &rarr;</div>
+      </a>
       <a routerLink="/journal" class="stat-card stat-link">
         <div class="stat-icon">&#128201;</div>
         <div class="stat-value">{{ ecritures.length }}</div>
@@ -125,6 +130,7 @@ import { Facture, Devis, FactureProForma, RecuPaiement, BordereauDepense, Parame
         <a routerLink="/devis" class="btn btn-outline">&#128204; Nouveau devis</a>
         <a routerLink="/proforma" class="btn btn-outline">&#128209; Facture pro forma</a>
         <a routerLink="/caisse" class="btn btn-outline">&#128176; Op&eacute;ration de caisse</a>
+        <a *ngIf="auth.hasDroit('CAISSE_VOIR')" routerLink="/historique" class="btn btn-outline">&#128202; Historique des op&eacute;rations</a>
         <a routerLink="/bordereaux" class="btn btn-outline">&#128202; Nouveau bordereau</a>
         <a routerLink="/clients" class="btn btn-outline">&#128100; G&eacute;rer les clients</a>
         <a routerLink="/journal" class="btn btn-outline">&#128201; Journal comptable</a>
@@ -145,6 +151,7 @@ export class DashboardComponent implements OnInit {
   clients: any[] = [];
   utilisateurs: any[] = [];
   ecritures: any[] = [];
+  operations: any[] = [];
   solde = 0;
   devise = "XOF";
 
@@ -168,8 +175,12 @@ export class DashboardComponent implements OnInit {
     this.ecritures = j.data || [];
     this.devise = p.data?.devise || "XOF";
 
-    const ca = await this.api.get<any>("/caisses");
+    const [ca, ops] = await Promise.all([
+      this.api.get<any>("/caisses"),
+      this.api.get<any[]>("/operations-caisse"),
+    ]);
     this.solde = ca.data?.solde || 0;
+    this.operations = ops.data || [];
 
     if (this.auth.isSuperviseur()) {
       const u = await this.api.get<any[]>("/utilisateurs");

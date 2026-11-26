@@ -336,6 +336,40 @@ app-root {
   text-decoration: none;
 }
 
+/* ---------- Caisse check list ---------- */
+.caisse-check-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid rgb(var(--color-border));
+  border-radius: var(--radius-md);
+  max-height: 220px;
+  overflow-y: auto;
+  background: rgb(var(--color-bg));
+}
+
+.caisse-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-base);
+}
+
+.caisse-check:hover {
+  background: rgb(var(--color-primary-light));
+}
+
+.caisse-check input {
+  width: auto;
+  cursor: pointer;
+}
+
 .stat-value {
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-bold);

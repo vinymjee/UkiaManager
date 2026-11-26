@@ -737,16 +737,56 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       return ok(result);
     }
 
+    // ---------- Caisses visibles selon les autorisations ----------
+    if (base === "/api/caisses/visibles" && request.method === "GET") {
+      const me = await verifieToken(env, request);
+      if (!me) return erreur("Non authentifie", 401);
+      if (!aDroit(data, me, "CAISSE_VOIR")) return erreur("Acces refuse", 403);
+      if (!data.caisses) data.caisses = [];
+      let users = data.utilisateurs;
+      if (me.role !== "SUPERVISEUR") {
+        // un agent voit sa caisse + celles des utilisateurs avec qui il a transferé
+        const ids = new Set<string>([me.id]);
+        for (const t of (data.transfertsCaisse || [])) {
+          if (t.expediteurId === me.id) ids.add(t.destinataireId);
+          if (t.destinataireId === me.id) ids.add(t.expediteurId);
+        }
+        users = users.filter((u: any) => ids.has(u.id));
+      }
+      const result = users.map((u: any) => {
+        const c = data.caisses.find((x: any) => x.userId === u.id);
+        return { userId: u.id, nom: u.nom, role: u.role, solde: c?.solde || 0 };
+      });
+      return ok(result);
+    }
+
     // ---------- Operations de caisse ----------
     if (base === "/api/operations-caisse" && request.method === "GET") {
       const me = await verifieToken(env, request);
       if (!me) return erreur("Non authentifie", 401);
       if (!aDroit(data, me, "CAISSE_VOIR")) return erreur("Acces refuse", 403);
       if (!data.operationsCaisse) data.operationsCaisse = [];
-      const userId = url.searchParams.get("userId");
-      let ops = data.operationsCaisse;
-      if (me.role !== "SUPERVISEUR") ops = ops.filter((o: any) => o.userId === me.id);
-      else if (userId) ops = ops.filter((o: any) => o.userId === userId);
+      const userIdsParam = url.searchParams.get("userIds");
+      const dateDebut = url.searchParams.get("debut");
+      const dateFin = url.searchParams.get("fin");
+      let ops: any[] = data.operationsCaisse;
+
+      if (me.role !== "SUPERVISEUR") {
+        const ids = new Set<string>([me.id]);
+        for (const t of (data.transfertsCaisse || [])) {
+          if (t.expediteurId === me.id) ids.add(t.destinataireId);
+          if (t.destinataireId === me.id) ids.add(t.expediteurId);
+        }
+        ops = ops.filter((o: any) => ids.has(o.userId));
+      }
+
+      if (userIdsParam) {
+        const ids = new Set(userIdsParam.split(",").filter(Boolean));
+        ops = ops.filter((o: any) => ids.has(o.userId));
+      }
+      if (dateDebut) ops = ops.filter((o: any) => (o.date || "").slice(0, 10) >= dateDebut);
+      if (dateFin) ops = ops.filter((o: any) => (o.date || "").slice(0, 10) <= dateFin);
+
       return ok(ops.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     }
     if (base === "/api/operations-caisse" && request.method === "POST") {
