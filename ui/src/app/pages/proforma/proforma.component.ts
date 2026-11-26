@@ -156,7 +156,7 @@ export class ProformaComponent implements OnInit {
   fermerFormulaire() { this.formVisible = false; }
 
   ajouterLigne() {
-    this.pf.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0.18, total: 0 });
+    this.pf.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0, total: 0 });
     this.calculerTotaux();
   }
 

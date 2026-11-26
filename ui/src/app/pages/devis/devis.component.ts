@@ -169,7 +169,7 @@ export class DevisComponent implements OnInit {
   fermerFormulaire() { this.formVisible = false; }
 
   ajouterLigne() {
-    this.devisEdit.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0.18, total: 0 });
+    this.devisEdit.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0, total: 0 });
     this.calculerTotaux();
   }
 

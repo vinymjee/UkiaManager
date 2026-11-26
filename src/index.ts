@@ -85,6 +85,7 @@ async function getData(env: Env): Promise<CaisseData> {
     if (!d.operationsCaisse) d.operationsCaisse = [];
     if (!d.transfertsCaisse) d.transfertsCaisse = [];
     if (!d.parametres) d.parametres = EMPTY_DATA.parametres;
+    (d.parametres as any).tauxTva = 0; // TVA fixée à 0
     // normalize users: ensure droits array
     for (const u of d.utilisateurs) {
       if (!Array.isArray(u.droits)) u.droits = u.role === "SUPERVISEUR" ? [...TOUS_LES_DROITS] : [];
@@ -120,7 +121,7 @@ function nouvelleLigne(l: any, index: number, tauxTvaDefaut: number): Ligne {
     description: l.description || "",
     quantite: Number(l.quantite) || 0,
     prixUnitaire: Number(l.prixUnitaire) || 0,
-    tva: Number(l.tva ?? tauxTvaDefaut),
+    tva: 0, // TVA fixée à 0
     total: (Number(l.quantite) || 0) * (Number(l.prixUnitaire) || 0),
   };
 }
@@ -480,7 +481,38 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       const index = data.bordereauxDepense.findIndex((b) => b.id === m[1]);
       if (index === -1) return erreur("Bordereau introuvable", 404);
       const bord = data.bordereauxDepense[index];
-      bord.statut = m[2] === "valider" ? "VALIDEE" : "ANNULEE";
+      const action = m[2];
+      if (action === "valider") {
+        if (bord.statut === "VALIDEE") return erreur("Bordereau deja valide");
+        bord.statut = "VALIDEE";
+        // Impact sur la caisse de l'agent : décaissement
+        const userId = bord.agentId || me.id;
+        if (!data.caisses) data.caisses = [];
+        if (!data.operationsCaisse) data.operationsCaisse = [];
+        let caisse = data.caisses.find((c: any) => c.userId === userId);
+        if (!caisse) {
+          caisse = { userId, solde: 0, creeLe: maintenant(), majLe: maintenant() };
+          data.caisses.push(caisse);
+        }
+        caisse.solde = (caisse.solde || 0) - bord.total;
+        caisse.majLe = maintenant();
+        data.operationsCaisse.push({
+          id: id(),
+          numero: `OP-${Date.now()}-DEP`,
+          type: "DECAISSEMENT",
+          montant: bord.total,
+          libelle: `Bordereau ${bord.numero} - ${bord.fournisseur}`,
+          source: "BORDEREAU",
+          refId: bord.id,
+          userId,
+          agentId: me.id,
+          agentNom: me.nom,
+          date: maintenant(),
+          creeLe: maintenant(),
+        });
+      } else {
+        bord.statut = "ANNULEE";
+      }
       await saveData(env, data);
       return ok(bord);
     }

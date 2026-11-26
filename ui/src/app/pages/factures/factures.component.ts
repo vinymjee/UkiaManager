@@ -180,7 +180,7 @@ export class FacturesComponent implements OnInit {
   }
 
   ajouterLigne() {
-    this.facture.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0.18, total: 0 });
+    this.facture.lignes.push({ description: "", quantite: 1, prixUnitaire: 0, tva: 0, total: 0 });
     this.calculerTotaux();
   }
 

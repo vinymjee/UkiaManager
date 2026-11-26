@@ -35,7 +35,7 @@ export interface Ligne {
   description: string;
   quantite: number;
   prixUnitaire: number;
-  tva: number; // taux en fraction (ex: 0.18)
+  tva: number; // taux en fraction (fixé à 0)
   total: number;
 }
 
@@ -211,7 +211,7 @@ export const EMPTY_DATA: CaisseData = {
   caisses: [],
   operationsCaisse: [],
   transfertsCaisse: [],
-  parametres: { tauxTva: 0.18, devise: "XOF", nomEntreprise: "Ma Entreprise", adresseEntreprise: "" },
+  parametres: { tauxTva: 0, devise: "XOF", nomEntreprise: "Ma Entreprise", adresseEntreprise: "" },
 };
 
 export const ALLOWED_COLLECTIONS = [
