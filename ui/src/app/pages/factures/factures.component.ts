@@ -5,7 +5,7 @@ import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
 import { QrService } from "../../services/qr.service";
-import { Facture, Client } from "../../models";
+import { Facture, Client, LignePaiement } from "../../models";
 
 @Component({
   selector: "app-factures",
@@ -24,6 +24,54 @@ import { Facture, Client } from "../../models";
 
     <div class="alert alert-error" *ngIf="erreur" role="alert">{{ erreur }}</div>
     <div class="alert alert-success" *ngIf="message" role="alert">{{ message }}</div>
+
+    <!-- Panneau de paiement avec répartition par lignes -->
+    <div *ngIf="factureAPayer" class="card card-body" style="border-color: rgb(var(--color-primary));">
+      <div class="card-header">
+        <div class="card-title">Paiement de la facture {{ factureAPayer.numero }} — {{ factureAPayer.clientNom }}</div>
+        <button class="btn btn-ghost btn-sm" (click)="factureAPayer = null">Fermer</button>
+      </div>
+      <form (ngSubmit)="confirmerPaiement()" class="form-grid" style="margin-top: var(--space-3);">
+        <div class="form-group">
+          <label class="form-label">Mode de paiement</label>
+          <select name="mode" [(ngModel)]="paiement.mode" class="form-select">
+            <option value="especes">Espèces</option>
+            <option value="carte">Carte bancaire</option>
+            <option value="virement">Virement</option>
+            <option value="cheque">Chèque</option>
+            <option value="mobile money">Mobile Money</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Montant total à encaisser</label>
+          <input type="number" name="montant" [(ngModel)]="paiement.montant" class="form-input" readonly />
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Répartition par ligne de facture</label>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>Désignation</th><th>Montant facturé</th><th>Montant à payer</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let l of paiement.lignes; let i = index">
+                  <td>{{ l.description }}</td>
+                  <td>{{ factureAPayer.lignes[i]?.total | number:'1.0-2' }}</td>
+                  <td><input type="number" name="pay-ligne-{{i}}" [(ngModel)]="l.montant" class="form-input" step="0.01" min="0" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="somme-check" [class.valid]="paiementValide" [class.invalid]="!paiementValide">
+            Somme : {{ sommePaiement | number:'1.0-2' }} / Total : {{ paiement.montant | number:'1.0-2' }}
+            <span *ngIf="paiementValide">✓ Conforme</span>
+            <span *ngIf="!paiementValide">✗ La somme doit être égale au total</span>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-success" [disabled]="!paiementValide || chargement">Valider le paiement</button>
+          <button type="button" class="btn btn-outline" (click)="factureAPayer = null">Annuler</button>
+        </div>
+      </form>
+    </div>
 
     <!-- Formulaire -->
     <div *ngIf="formVisible" class="card card-body">
@@ -144,6 +192,17 @@ export class FacturesComponent implements OnInit {
   facture: Facture = this.newFacture();
   totaux = { ht: 0, tva: 0, ttc: 0 };
 
+  factureAPayer: Facture | null = null;
+  paiement: { mode: string; montant: number; lignes: LignePaiement[] } = { mode: "especes", montant: 0, lignes: [] };
+
+  get sommePaiement(): number {
+    return this.paiement.lignes.reduce((s, l) => s + (Number(l.montant) || 0), 0);
+  }
+
+  get paiementValide(): boolean {
+    return Math.abs(this.sommePaiement - Number(this.paiement.montant)) < 0.01;
+  }
+
   newFacture(): Facture {
     return {
       id: "", numero: "", clientId: "", clientNom: "", date: new Date().toISOString().slice(0, 10),
@@ -227,12 +286,34 @@ export class FacturesComponent implements OnInit {
     else this.erreur = r.erreur || "Erreur.";
   }
 
-  async payer(f: Facture) {
-    const mode = prompt("Mode de paiement (espèces, carte, virement...)", "espèces");
-    if (mode === null) return;
-    const r = await this.api.post(`/factures/${f.id}/payer`, { mode });
-    if (r.ok) await this.charger();
-    else this.erreur = r.erreur || "Erreur.";
+  payer(f: Facture) {
+    this.factureAPayer = f;
+    this.paiement = {
+      mode: "especes",
+      montant: f.ttc,
+      lignes: f.lignes.map((l) => ({ description: l.description, montant: l.total || 0 })),
+    };
+    this.erreur = "";
+  }
+
+  async confirmerPaiement() {
+    if (!this.factureAPayer) return;
+    if (!this.paiementValide) {
+      this.erreur = "La somme des lignes doit être égale au montant total.";
+      return;
+    }
+    this.chargement = true;
+    const r = await this.api.post(`/factures/${this.factureAPayer.id}/payer`, {
+      mode: this.paiement.mode,
+      montant: this.paiement.montant,
+      lignesPaiement: this.paiement.lignes,
+    });
+    this.chargement = false;
+    if (r.ok) {
+      this.message = "Facture marquée payée. Réçu et opération de caisse générés.";
+      this.factureAPayer = null;
+      await this.charger();
+    } else this.erreur = r.erreur || "Erreur.";
   }
 
   async annuler(f: Facture) {

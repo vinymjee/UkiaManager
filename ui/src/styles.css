@@ -370,6 +370,29 @@ app-root {
   cursor: pointer;
 }
 
+.somme-check {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.somme-check.valid {
+  background: rgb(var(--color-success-light));
+  color: rgb(var(--color-success));
+  border: 1px solid rgb(var(--color-success));
+}
+
+.somme-check.invalid {
+  background: rgb(var(--color-error-light));
+  color: rgb(var(--color-error));
+  border: 1px solid rgb(var(--color-error));
+}
+
 .stat-value {
   font-size: var(--text-2xl);
   font-weight: var(--font-weight-bold);

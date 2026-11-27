@@ -120,6 +120,11 @@ export interface Caisse {
   majLe: string;
 }
 
+export interface LignePaiement {
+  description: string;
+  montant: number;
+}
+
 export interface OperationCaisse {
   id: string;
   numero: string;
@@ -133,6 +138,7 @@ export interface OperationCaisse {
   agentNom: string;
   date: string;
   creeLe: string;
+  lignesPaiement?: LignePaiement[];
 }
 
 export interface TransfertCaisse {

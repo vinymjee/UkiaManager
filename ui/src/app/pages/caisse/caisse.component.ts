@@ -1,16 +1,17 @@
 import { Component, inject, OnInit } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
+import { RouterLink } from "@angular/router";
 import { ApiService } from "../../services/api.service";
 import { AuthService } from "../../services/auth.service";
 import { PrintService } from "../../services/print.service";
 import { QrService } from "../../services/qr.service";
-import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Facture } from "../../models";
+import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Facture, LignePaiement } from "../../models";
 
 @Component({
   selector: "app-caisse",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="app-header">
       <div>
@@ -22,7 +23,7 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
     <div class="alert alert-error" *ngIf="erreur" role="alert">{{ erreur }}</div>
     <div class="alert alert-success" *ngIf="message" role="alert">{{ message }}</div>
 
-    <!-- Solde -->
+    <!-- Soldes -->
     <div class="stat-grid">
       <div class="stat-card">
         <div class="stat-value">{{ caisse?.solde | number:'1.0-2' }}</div>
@@ -34,17 +35,13 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
       </div>
     </div>
 
-    <!-- Soldes de toutes les caisses (superviseur) -->
     <div *ngIf="auth.isSuperviseur() && soldes.length" class="card card-body" style="margin-top: var(--space-4);">
       <div class="card-header"><div class="card-title">Soldes par utilisateur</div></div>
       <div class="table-wrap" style="margin-top: var(--space-3);">
         <table class="data-table">
           <thead><tr><th>Utilisateur</th><th>Solde</th></tr></thead>
           <tbody>
-            <tr *ngFor="let s of soldes">
-              <td>{{ s.nom }}</td>
-              <td>{{ s.solde | number:'1.0-2' }}</td>
-            </tr>
+            <tr *ngFor="let s of soldes"><td>{{ s.nom }}</td><td>{{ s.solde | number:'1.0-2' }}</td></tr>
           </tbody>
         </table>
       </div>
@@ -56,21 +53,56 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
       <form (ngSubmit)="enregistrerOperation()" #f="ngForm" class="form-grid" style="margin-top: var(--space-3);">
         <div class="form-group">
           <label class="form-label">Type</label>
-          <select name="type" [(ngModel)]="op.type" required class="form-select">
+          <select name="type" [(ngModel)]="op.type" (change)="onTypeChange()" required class="form-select">
             <option *ngIf="auth.hasDroit('CAISSE_ENCAISSEMENT')" value="ENCAISSEMENT">Encaissement</option>
             <option *ngIf="auth.hasDroit('CAISSE_DECAISSEMENT')" value="DECAISSEMENT">Dépense (décaissement)</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Montant</label>
-          <input type="number" name="montant" [(ngModel)]="op.montant" required step="0.01" class="form-input" placeholder="0.00" />
+
+        <div class="form-group full" *ngIf="op.type === 'ENCAISSEMENT'">
+          <label class="form-label">Facture concernée (paiement anticipé / encaissement sur facture)</label>
+          <select name="factureId" [(ngModel)]="op.factureId" (change)="onFactureChange()" class="form-select">
+            <option value="">-- Aucune facture (encaissement ordinaire) --</option>
+            <option *ngFor="let fac of facturesNonPayees" [value]="fac.id">{{ fac.numero }} — {{ fac.clientNom }} — {{ fac.ttc | number:'1.0-2' }}</option>
+          </select>
         </div>
+
+        <div class="form-group">
+          <label class="form-label">Montant total de l'opération</label>
+          <input type="number" name="montant" [(ngModel)]="op.montant" (change)="verifierSomme()" required step="0.01" class="form-input" placeholder="0.00" [readonly]="op.factureId" />
+          <span class="form-hint" *ngIf="op.factureId">Montant renseigné automatiquement d'après la facture</span>
+        </div>
+
+        <div class="form-group full" *ngIf="op.factureId">
+          <label class="form-label">Répartition du montant par ligne de facture</label>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>Désignation</th><th>Montant facturé</th><th>Montant à payer</th></tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let l of op.lignesPaiement; let i = index">
+                  <td>{{ l.description }}</td>
+                  <td>{{ factureChoisie?.lignes[i]?.total | number:'1.0-2' }}</td>
+                  <td><input type="number" name="ligne-{{i}}" [(ngModel)]="l.montant" (change)="verifierSomme()" class="form-input" step="0.01" min="0" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="somme-check" [class.valid]="sommeLignesValide" [class.invalid]="!sommeLignesValide">
+            Somme des lignes : {{ sommeLignes | number:'1.0-2' }} / Montant : {{ op.montant | number:'1.0-2' }}
+            <span *ngIf="sommeLignesValide">✓ Conforme</span>
+            <span *ngIf="!sommeLignesValide">✗ La somme doit être égale au montant total</span>
+          </div>
+        </div>
+
         <div class="form-group full">
           <label class="form-label">Libellé</label>
           <input type="text" name="libelle" [(ngModel)]="op.libelle" required class="form-input" placeholder="Motif de l'opération" />
         </div>
+
         <div class="form-actions">
-          <button type="submit" class="btn btn-success" [disabled]="chargement">Enregistrer</button>
+          <button type="submit" class="btn btn-success" [disabled]="chargement || (op.factureId && !sommeLignesValide)">Enregistrer</button>
         </div>
       </form>
     </div>
@@ -101,7 +133,7 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
       <p style="font-size: var(--text-xs); color: rgb(var(--color-text-muted)); margin-top: var(--space-2);">Le transfert ne devient effectif qu'après confirmation du destinataire.</p>
     </div>
 
-    <!-- Transferts en attente de confirmation (destinataire) -->
+    <!-- Transferts en attente -->
     <div *ngIf="transfertsEnAttente.length" class="card card-body" style="margin-top: var(--space-6);">
       <div class="card-header"><div class="card-title">Transferts en attente de votre confirmation</div></div>
       <div class="table-wrap" style="margin-top: var(--space-3);">
@@ -109,10 +141,8 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
           <thead><tr><th>N°</th><th>Expéditeur</th><th>Montant</th><th>Motif</th><th>Date</th><th>Actions</th></tr></thead>
           <tbody>
             <tr *ngFor="let t of transfertsEnAttente">
-              <td>{{ t.numero }}</td>
-              <td>{{ t.expediteurNom }}</td>
-              <td>{{ t.montant | number:'1.0-2' }}</td>
-              <td>{{ t.motif || "-" }}</td>
+              <td>{{ t.numero }}</td><td>{{ t.expediteurNom }}</td>
+              <td>{{ t.montant | number:'1.0-2' }}</td><td>{{ t.motif || "-" }}</td>
               <td>{{ t.creeLe | slice:0:10 }}</td>
               <td class="table-actions">
                 <button class="btn btn-success btn-sm" (click)="confirmerTransfert(t)">Confirmer réception</button>
@@ -124,24 +154,21 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
       </div>
     </div>
 
-    <!-- Historique des operations -->
+    <!-- Historique des operations (résumé) -->
     <div class="card card-body" style="margin-top: var(--space-6);">
       <div class="card-header">
-        <div class="card-title">Historique des opérations de caisse</div>
-        <button class="btn btn-outline btn-sm" (click)="imprimerHistorique()">Imprimer</button>
+        <div class="card-title">Dernières opérations de caisse</div>
+        <a routerLink="/historique" class="link-btn">Voir tout l'historique</a>
       </div>
       <div class="table-wrap" style="margin-top: var(--space-3);">
         <table class="data-table">
           <thead><tr><th>Date</th><th>N°</th><th>Type</th><th>Libellé</th><th>Montant</th><th>Source</th><th>Actions</th></tr></thead>
           <tbody>
-            <tr *ngFor="let o of operations">
-              <td>{{ o.date | slice:0:10 }}</td>
-              <td>{{ o.numero }}</td>
+            <tr *ngFor="let o of operations.slice(0, 8)">
+              <td>{{ o.date | slice:0:10 }}</td><td>{{ o.numero }}</td>
               <td><span class="badge" [class]="'badge-' + (o.type === 'ENCAISSEMENT' || o.type === 'TRANSFERT_ENTRANT' ? 'success' : 'error')">{{ o.type }}</span></td>
-              <td>{{ o.libelle }}</td>
-              <td>{{ o.montant | number:'1.0-2' }}</td>
-              <td>{{ o.source }}</td>
-              <td class="table-actions"><button class="btn btn-outline btn-sm" (click)="reimprimer(o)">Réimprimer {{ o.source === 'FACTURE' ? 'reçu' : 'bordereau' }}</button></td>
+              <td>{{ o.libelle }}</td><td>{{ o.montant | number:'1.0-2' }}</td><td>{{ o.source }}</td>
+              <td class="table-actions"><button class="btn btn-outline btn-sm" (click)="reimprimer(o)">Imprimer {{ o.source === 'FACTURE' ? 'reçu' : 'bordereau' }}</button></td>
             </tr>
             <tr *ngIf="operations.length === 0"><td colspan="7" class="empty-state">Aucune opération.</td></tr>
           </tbody>
@@ -149,25 +176,13 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
       </div>
     </div>
 
-    <!-- Historique des transferts -->
-    <div class="card card-body" style="margin-top: var(--space-6);">
-      <div class="card-header"><div class="card-title">Historique des transferts</div></div>
-      <div class="table-wrap" style="margin-top: var(--space-3);">
-        <table class="data-table">
-          <thead><tr><th>N°</th><th>Expéditeur</th><th>Destinataire</th><th>Montant</th><th>Statut</th><th>Date</th></tr></thead>
-          <tbody>
-            <tr *ngFor="let t of transferts">
-              <td>{{ t.numero }}</td>
-              <td>{{ t.expediteurNom }}</td>
-              <td>{{ t.destinataireNom }}</td>
-              <td>{{ t.montant | number:'1.0-2' }}</td>
-              <td><span class="badge" [class]="'badge-' + (t.statut === 'CONFIRME' ? 'success' : t.statut === 'REJETE' || t.statut === 'ANNULE' ? 'error' : 'warning')">{{ t.statut }}</span></td>
-              <td>{{ t.creeLe | slice:0:10 }}</td>
-            </tr>
-            <tr *ngIf="transferts.length === 0"><td colspan="6" class="empty-state">Aucun transfert.</td></tr>
-          </tbody>
-        </table>
-      </div>
+    <!-- Admin : réinitialisation -->
+    <div *ngIf="auth.isSuperviseur()" class="card card-body" style="margin-top: var(--space-6); border-color: rgb(var(--color-error));">
+      <div class="card-header"><div class="card-title">Administration — Réinitialisation des données de test</div></div>
+      <p style="font-size: var(--text-sm); color: rgb(var(--color-text-secondary));">
+        Efface toutes les données comptables (factures, devis, clients, réçus, bordereaux, opérations, transferts) et remet tous les soldes à zéro. Les comptes utilisateurs sont conservés.
+      </p>
+      <button class="btn btn-danger" (click)="reinitialiser()">Réinitialiser toutes les données</button>
     </div>
   `,
 })
@@ -185,17 +200,30 @@ export class CaisseComponent implements OnInit {
   transfertsEnAttente: TransfertCaisse[] = [];
   recus: RecuPaiement[] = [];
   factures: Facture[] = [];
+  facturesNonPayees: Facture[] = [];
   erreur = "";
   message = "";
   chargement = false;
   totalSysteme = 0;
 
-  op: { type: string; montant: number; libelle: string } = { type: "ENCAISSEMENT", montant: 0, libelle: "" };
+  op: { type: string; montant: number; libelle: string; factureId: string; lignesPaiement: LignePaiement[] } = {
+    type: "ENCAISSEMENT", montant: 0, libelle: "", factureId: "", lignesPaiement: [],
+  };
   tr: { destinataireId: string; montant: number; motif: string } = { destinataireId: "", montant: 0, motif: "" };
 
-  async ngOnInit() {
-    await this.charger();
+  get factureChoisie(): Facture | undefined {
+    return this.factures.find((f) => f.id === this.op.factureId);
   }
+
+  get sommeLignes(): number {
+    return this.op.lignesPaiement.reduce((s, l) => s + (Number(l.montant) || 0), 0);
+  }
+
+  get sommeLignesValide(): boolean {
+    return Math.abs(this.sommeLignes - Number(this.op.montant)) < 0.01;
+  }
+
+  async ngOnInit() { await this.charger(); }
 
   async charger() {
     this.erreur = "";
@@ -217,6 +245,7 @@ export class CaisseComponent implements OnInit {
     ]);
     this.recus = rec.data || [];
     this.factures = fac.data || [];
+    this.facturesNonPayees = this.factures.filter((f) => f.statut !== "PAYEE" && f.statut !== "ANNULEE");
     if (this.auth.isSuperviseur()) {
       const s = await this.api.get<any[]>("/caisses/tous");
       if (s.ok) {
@@ -226,14 +255,49 @@ export class CaisseComponent implements OnInit {
     }
   }
 
+  onTypeChange() {
+    if (this.op.type !== "ENCAISSEMENT") {
+      this.op.factureId = "";
+      this.op.lignesPaiement = [];
+    }
+  }
+
+  onFactureChange() {
+    const fac = this.factureChoisie;
+    if (fac) {
+      this.op.montant = fac.ttc;
+      this.op.lignesPaiement = fac.lignes.map((l) => ({ description: l.description, montant: l.total || 0 }));
+      if (!this.op.libelle) this.op.libelle = `Encaissement facture ${fac.numero} - ${fac.clientNom}`;
+    } else {
+      this.op.montant = 0;
+      this.op.lignesPaiement = [];
+    }
+    this.verifierSomme();
+  }
+
+  verifierSomme() {
+    // getter recalcule automatiquement
+  }
+
   async enregistrerOperation() {
     this.erreur = "";
+    if (this.op.factureId && !this.sommeLignesValide) {
+      this.erreur = "La somme des montants par ligne doit être égale au montant total de l'opération.";
+      return;
+    }
     this.chargement = true;
-    const r = await this.api.post<OperationCaisse>("/operations-caisse", this.op);
+    const payload: any = {
+      type: this.op.type,
+      montant: this.op.montant,
+      libelle: this.op.libelle,
+      factureId: this.op.factureId || undefined,
+      lignesPaiement: this.op.factureId ? this.op.lignesPaiement : undefined,
+    };
+    const r = await this.api.post<OperationCaisse>("/operations-caisse", payload);
     this.chargement = false;
     if (r.ok) {
-      this.message = "Opération enregistrée.";
-      this.op = { type: "ENCAISSEMENT", montant: 0, libelle: "" };
+      this.message = this.op.factureId ? "Encaissement enregistré et facture marquée payée." : "Opération enregistrée.";
+      this.op = { type: "ENCAISSEMENT", montant: 0, libelle: "", factureId: "", lignesPaiement: [] };
       await this.charger();
     } else {
       this.erreur = r.erreur || "Erreur.";
@@ -249,9 +313,7 @@ export class CaisseComponent implements OnInit {
       this.message = "Transfert envoyé. En attente de confirmation.";
       this.tr = { destinataireId: "", montant: 0, motif: "" };
       await this.charger();
-    } else {
-      this.erreur = r.erreur || "Erreur.";
-    }
+    } else this.erreur = r.erreur || "Erreur.";
   }
 
   async confirmerTransfert(t: TransfertCaisse) {
@@ -268,13 +330,19 @@ export class CaisseComponent implements OnInit {
     else this.erreur = r.erreur || "Erreur.";
   }
 
+  async reinitialiser() {
+    if (!confirm("ATTENTION : Effacer TOUTES les données de test (factures, clients, réçus, opérations, soldes) ? Cette action est irréversible.")) return;
+    this.chargement = true;
+    const r = await this.api.post("/admin/reset", { confirm: true });
+    this.chargement = false;
+    if (r.ok) { this.message = "Données réinitialisées. Tous les soldes sont à zéro."; await this.charger(); }
+    else this.erreur = r.erreur || "Erreur.";
+  }
+
   reimprimer(o: OperationCaisse) {
     const recu = this.recus.find((r) => r.factureId === o.refId || r.id === o.refId);
-    if (recu) {
-      this.imprimerRecu(recu);
-    } else {
-      this.imprimerBordereau(o);
-    }
+    if (recu) this.imprimerRecu(recu);
+    else this.imprimerBordereau(o);
   }
 
   imprimerRecu(r: RecuPaiement) {
@@ -288,19 +356,14 @@ export class CaisseComponent implements OnInit {
     const matricule = r.clientId || "UKLC_7";
     const numFacture = facture?.numero || r.factureId || "00186";
     const dateStr = r.date?.slice(0, 10) || "";
-
     const bodyHtml = `
-      <hr class="rec-sep"/>
-      <div class="rec-titre-centre">RECU DE PAIEMENT</div>
-      <hr class="rec-sep2"/>
+      <hr class="rec-sep"/><div class="rec-titre-centre">RECU DE PAIEMENT</div><hr class="rec-sep2"/>
       <div class="rec-infos">
         <div class="rec-ligne"><span><b>Matricule client :</b> ${matricule}</span><span class="droite"><b>Num&eacute;ro facture :</b> <span class="rec-rouge">${numFacture}</span> /2026</span></div>
         <div class="rec-client"><b>Client :</b> ${r.clientNom || "-"}</div>
       </div>
       <table class="rec-table">
-        <thead>
-          <tr><th style="width:14%">Code</th><th style="width:46%">Intitul&eacute;</th><th class="right" style="width:20%">Montant Vers&eacute;</th><th class="right" style="width:20%">Reste</th></tr>
-        </thead>
+        <thead><tr><th>Code</th><th>Intitul&eacute;</th><th class="right">Montant Vers&eacute;</th><th class="right">Reste</th></tr></thead>
         <tbody>
           ${lignes.length ? lignes.map((l) => `<tr><td>${code}</td><td>${l.description || ""}</td><td class="right">${Number(l.total || 0).toFixed(2)} FCFA</td><td class="right">${reste.toFixed(2)} FCFA</td></tr>`).join("") : `<tr><td>${code}</td><td>Paiement</td><td class="right">${r.montant.toFixed(2)} FCFA</td><td class="right">${reste.toFixed(2)} FCFA</td></tr>`}
           <tr class="rec-total"><td colspan="2">Total vers&eacute;</td><td class="right">${r.montant.toFixed(2)} FCFA</td><td class="right">${reste.toFixed(2)} FCFA</td></tr>
@@ -308,10 +371,7 @@ export class CaisseComponent implements OnInit {
       </table>
       <p class="rec-montant-lettres">${r.montant.toLocaleString("fr-FR")} francs CFA</p>
       <div class="rec-date">Brazzaville : le ${dateStr}</div>
-      <div class="rec-sign">
-        <div><b>${nominatif}</b></div>
-        ${cachet ? `<div class="rec-cachet">${cachet}</div>` : ""}
-      </div>
+      <div class="rec-sign"><div><b>${nominatif}</b></div>${cachet ? `<div class="rec-cachet">${cachet}</div>` : ""}</div>
       <div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
     `;
     this.print.printWithHeader("Reçu de paiement", bodyHtml, this.qr.docUrl("recu", r.id));
@@ -323,43 +383,22 @@ export class CaisseComponent implements OnInit {
     const cachet = u?.cachet || "";
     const dateStr = o.date?.slice(0, 10) || "";
     const estDepense = o.type === "DECAISSEMENT" || o.type === "TRANSFERT_SORTANT";
-
     const bodyHtml = `
-      <hr class="rec-sep"/>
-      <div class="rec-titre-centre">BORDEREAU DE ${estDepense ? "DEPENSE" : "VERSEMENT"}</div>
-      <hr class="rec-sep2"/>
+      <hr class="rec-sep"/><div class="rec-titre-centre">BORDEREAU DE ${estDepense ? "DEPENSE" : "VERSEMENT"}</div><hr class="rec-sep2"/>
       <div class="rec-infos">
         <div class="rec-ligne"><span><b>Num&eacute;ro :</b> ${o.numero}</span><span class="droite"><b>Date :</b> ${dateStr}</span></div>
-        <div class="rec-client"><b>Op&eacute;ration :</b> ${o.type}</div>
         <div class="rec-client"><b>Libell&eacute; :</b> ${o.libelle}</div>
       </div>
       <table class="rec-table">
-        <thead>
-          <tr><th style="width:20%">Code</th><th style="width:50%">Intitul&eacute;</th><th class="right" style="width:30%">Montant</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>CAISSE</td><td>${o.libelle}</td><td class="right">${o.montant.toFixed(2)} FCFA</td></tr>
-          <tr class="rec-total"><td colspan="2">Total</td><td class="right">${o.montant.toFixed(2)} FCFA</td></tr>
-        </tbody>
+        <thead><tr><th>Code</th><th>Intitul&eacute;</th><th class="right">Montant</th></tr></thead>
+        <tbody><tr><td>CAISSE</td><td>${o.libelle}</td><td class="right">${o.montant.toFixed(2)} FCFA</td></tr>
+        <tr class="rec-total"><td colspan="2">Total</td><td class="right">${o.montant.toFixed(2)} FCFA</td></tr></tbody>
       </table>
       <p class="rec-montant-lettres">${o.montant.toLocaleString("fr-FR")} francs CFA</p>
       <div class="rec-date">Brazzaville : le ${dateStr}</div>
-      <div class="rec-sign">
-        <div><b>${nominatif}</b></div>
-        ${cachet ? `<div class="rec-cachet">${cachet}</div>` : ""}
-      </div>
+      <div class="rec-sign"><div><b>${nominatif}</b></div>${cachet ? `<div class="rec-cachet">${cachet}</div>` : ""}</div>
       <div class="rec-pied">R&eacute;publique du Congo<br/>Unit&eacute; * Travail * Progr&egrave;s</div>
     `;
     this.print.printWithHeader(estDepense ? "Bordereau de dépense" : "Bordereau de versement", bodyHtml, this.qr.docUrl("operation", o.id));
-  }
-
-  imprimerHistorique() {
-    let html = `<h1>Historique des opérations de caisse</h1><div class="meta">Imprimé le ${new Date().toLocaleDateString("fr-FR")}</div>`;
-    html += `<table><thead><tr><th>Date</th><th>N°</th><th>Type</th><th>Libellé</th><th>Montant</th><th>Source</th></tr></thead><tbody>`;
-    for (const o of this.operations) {
-      html += `<tr><td>${o.date?.slice(0, 10)}</td><td>${o.numero}</td><td>${o.type}</td><td>${o.libelle}</td><td class="right">${o.montant.toFixed(2)}</td><td>${o.source}</td></tr>`;
-    }
-    html += `</tbody></table>`;
-    this.print.printHtml("Historique caisse", html);
   }
 }

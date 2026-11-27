@@ -396,6 +396,28 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return ok({ id: superviseur.id, nom: superviseur.nom, email: superviseur.email, role: superviseur.role, droits: superviseur.droits, titre: superviseur.titre, cachet: superviseur.cachet });
   }
 
+  // ==================== RESET (superviseur uniquement) ====================
+  if (base === "/api/admin/reset" && request.method === "POST") {
+    const me = await verifieToken(env, request);
+    if (!me) return erreur("Non authentifie", 401);
+    if (me.role !== "SUPERVISEUR") return erreur("Reserve au superviseur", 403);
+    const data = await getData(env);
+    const body = await parseBody<{ confirm?: boolean }>(request) || {};
+    if (!body.confirm) return erreur("Confirmation requise");
+    data.clients = [];
+    data.factures = [];
+    data.devis = [];
+    data.facturesProForma = [];
+    data.recusPaiement = [];
+    data.bordereauxDepense = [];
+    data.ecrituresComptables = [];
+    data.operationsCaisse = [];
+    data.transfertsCaisse = [];
+    data.caisses = data.utilisateurs.map((u: any) => ({ userId: u.id, solde: 0, creeLe: maintenant(), majLe: maintenant() }));
+    await saveData(env, data);
+    return ok({ reinitialise: true });
+  }
+
   // ==================== DOCUMENT PUBLIC (sans autorisation, pour QR code) ====================
   const publicMatch = base.match(/^\/api\/public\/doc\/([a-zA-Z]+)\/([^/]+)$/);
   if (publicMatch && request.method === "GET") {
@@ -448,7 +470,14 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (action === "envoyer") {
         facture.statut = "ENVOYEE";
       } else if (action === "payer") {
-        const body = await parseBody<{ mode: string; montant?: number }>(request) || {};
+        const body = await parseBody<{ mode: string; montant?: number; lignesPaiement?: { description: string; montant: number }[] }>(request) || {};
+        if (Array.isArray(body.lignesPaiement) && body.lignesPaiement.length > 0) {
+          const somme = body.lignesPaiement.reduce((s, l) => s + Number(l.montant || 0), 0);
+          const attendu = body.montant ?? facture.ttc;
+          if (Math.abs(somme - Number(attendu)) > 0.01) {
+            return erreur(`La somme des lignes (${somme.toFixed(2)}) doit être égale au montant total (${Number(attendu).toFixed(2)})`);
+          }
+        }
         facture.statut = "PAYEE";
         facture.payeeLe = maintenant();
         facture.modePaiement = body.mode || "especes";
@@ -473,6 +502,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
            type: "ENCAISSEMENT",
            montant: facture.ttc,
            libelle: `Paiement facture ${facture.numero} - ${facture.clientNom}`,
+            ...(Array.isArray(body.lignesPaiement) && body.lignesPaiement.length ? {
+              lignesPaiement: body.lignesPaiement.map((l: any) => ({ description: l.description || "", montant: Number(l.montant || 0) })),
+            } : {}),
            source: "FACTURE",
            refId: facture.id,
            userId: facture.agentId,
@@ -799,19 +831,55 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       if (type === "DECAISSEMENT" && !aDroit(data, me, "CAISSE_DECAISSEMENT")) return erreur("Acces refuse", 403);
       if (!data.operationsCaisse) data.operationsCaisse = [];
       if (!data.caisses) data.caisses = [];
+
+      let source: any = "MANUEL";
+      let refId = "";
+      let lignesPaiement: any[] | undefined;
+      const factureId = body.factureId || "";
+
+      if (type === "ENCAISSEMENT" && factureId) {
+        const facture = data.factures.find((f: any) => f.id === factureId);
+        if (!facture) return erreur("Facture introuvable", 404);
+        if (facture.statut === "PAYEE") return erreur("Facture déjà payée");
+        const lignes = Array.isArray(body.lignesPaiement) ? body.lignesPaiement : [];
+        const somme = lignes.reduce((s: number, l: any) => s + Number(l.montant || 0), 0);
+        if (lignes.length === 0) return erreur("Veuillez renseigner les montants par ligne");
+        if (Math.abs(somme - Number(body.montant)) > 0.01) {
+          return erreur(`La somme des lignes (${somme.toFixed(2)}) doit être égale au montant de l'opération (${Number(body.montant).toFixed(2)})`);
+        }
+        source = "FACTURE";
+        refId = facture.id;
+        lignesPaiement = lignes.map((l: any) => ({ description: l.description || "", montant: Number(l.montant || 0) }));
+
+        // Marquer facture payée
+        facture.statut = "PAYEE";
+        facture.payeeLe = maintenant();
+        facture.modePaiement = body.mode || "especes";
+        // Générer reçu
+        const recu: RecuPaiement = {
+          id: id(), numero: `REC-${Date.now()}`, factureId: facture.id,
+          clientId: facture.clientId, clientNom: facture.clientNom,
+          montant: Number(body.montant), date: maintenant(),
+          mode: body.mode || "especes", agentId: me.id,
+        };
+        if (!data.recusPaiement) data.recusPaiement = [];
+        data.recusPaiement.push(recu);
+      }
+
       const op: OperationCaisse = {
         id: id(),
         numero: `OP-${Date.now()}`,
         type,
         montant: Number(body.montant),
         libelle: body.libelle,
-        source: "MANUEL",
-        refId: "",
+        source,
+        refId,
         userId: me.id,
         agentId: me.id,
         agentNom: me.nom,
         date: body.date || maintenant(),
         creeLe: maintenant(),
+        ...(lignesPaiement ? { lignesPaiement } : {}),
       };
       data.operationsCaisse.push(op);
       let caisse = data.caisses.find((c: any) => c.userId === me.id);
