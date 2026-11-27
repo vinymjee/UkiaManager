@@ -69,8 +69,8 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
 
         <div class="form-group">
           <label class="form-label">Montant total de l'opération</label>
-          <input type="number" name="montant" [(ngModel)]="op.montant" (change)="verifierSomme()" required step="0.01" class="form-input" placeholder="0.00" [readonly]="op.factureId" />
-          <span class="form-hint" *ngIf="op.factureId">Montant renseigné automatiquement d'après la facture</span>
+          <input type="number" name="montant" [(ngModel)]="op.montant" required step="0.01" class="form-input" placeholder="0.00" />
+          <span class="form-hint" *ngIf="op.factureId">Montant proposé (TTC). Modifiable pour un encaissement partiel / par avance.</span>
         </div>
 
         <div class="form-group full" *ngIf="op.factureId">
@@ -91,8 +91,8 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
           </div>
           <div class="somme-check" [class.valid]="sommeLignesValide" [class.invalid]="!sommeLignesValide">
             Somme des lignes : {{ sommeLignes | number:'1.0-2' }} / Montant : {{ op.montant | number:'1.0-2' }}
-            <span *ngIf="sommeLignesValide">✓ Conforme</span>
-            <span *ngIf="!sommeLignesValide">✗ La somme doit être égale au montant total</span>
+            <span *ngIf="sommeLignesValide">✓ Équilibré</span>
+            <span *ngIf="!sommeLignesValide">ℹ Écart informatif (encaissement partiel autorisé)</span>
           </div>
         </div>
 
@@ -102,7 +102,7 @@ import { Caisse, OperationCaisse, TransfertCaisse, Utilisateur, RecuPaiement, Fa
         </div>
 
         <div class="form-actions">
-          <button type="submit" class="btn btn-success" [disabled]="chargement || (op.factureId && !sommeLignesValide)">Enregistrer</button>
+          <button type="submit" class="btn btn-success" [disabled]="chargement">Enregistrer</button>
         </div>
       </form>
     </div>
@@ -281,10 +281,6 @@ export class CaisseComponent implements OnInit {
 
   async enregistrerOperation() {
     this.erreur = "";
-    if (this.op.factureId && !this.sommeLignesValide) {
-      this.erreur = "La somme des montants par ligne doit être égale au montant total de l'opération.";
-      return;
-    }
     this.chargement = true;
     const payload: any = {
       type: this.op.type,
@@ -296,7 +292,7 @@ export class CaisseComponent implements OnInit {
     const r = await this.api.post<OperationCaisse>("/operations-caisse", payload);
     this.chargement = false;
     if (r.ok) {
-      this.message = this.op.factureId ? "Encaissement enregistré et facture marquée payée." : "Opération enregistrée.";
+      this.message = this.op.factureId ? "Encaissement enregistré sur la facture (paiement partiel/par avance)." : "Opération enregistrée.";
       this.op = { type: "ENCAISSEMENT", montant: 0, libelle: "", factureId: "", lignesPaiement: [] };
       await this.charger();
     } else {

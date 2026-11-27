@@ -44,7 +44,7 @@ import { Facture, Client, LignePaiement } from "../../models";
         </div>
         <div class="form-group">
           <label class="form-label">Montant total à encaisser</label>
-          <input type="number" name="montant" [(ngModel)]="paiement.montant" class="form-input" readonly />
+          <input type="number" name="montant" [(ngModel)]="paiement.montant" class="form-input" step="0.01" min="0" />
         </div>
         <div class="form-group full">
           <label class="form-label">Répartition par ligne de facture</label>
@@ -62,12 +62,12 @@ import { Facture, Client, LignePaiement } from "../../models";
           </div>
           <div class="somme-check" [class.valid]="paiementValide" [class.invalid]="!paiementValide">
             Somme : {{ sommePaiement | number:'1.0-2' }} / Total : {{ paiement.montant | number:'1.0-2' }}
-            <span *ngIf="paiementValide">✓ Conforme</span>
-            <span *ngIf="!paiementValide">✗ La somme doit être égale au total</span>
+            <span *ngIf="paiementValide">✓ Équilibré</span>
+            <span *ngIf="!paiementValide">ℹ Écart informatif (paiement partiel/par avance autorisé)</span>
           </div>
         </div>
         <div class="form-actions">
-          <button type="submit" class="btn btn-success" [disabled]="!paiementValide || chargement">Valider le paiement</button>
+          <button type="submit" class="btn btn-success" [disabled]="chargement">Valider le paiement</button>
           <button type="button" class="btn btn-outline" (click)="factureAPayer = null">Annuler</button>
         </div>
       </form>
@@ -298,8 +298,8 @@ export class FacturesComponent implements OnInit {
 
   async confirmerPaiement() {
     if (!this.factureAPayer) return;
-    if (!this.paiementValide) {
-      this.erreur = "La somme des lignes doit être égale au montant total.";
+    if (!(this.paiement.montant > 0)) {
+      this.erreur = "Le montant doit être supérieur à zéro.";
       return;
     }
     this.chargement = true;

@@ -471,16 +471,15 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         facture.statut = "ENVOYEE";
       } else if (action === "payer") {
         const body = await parseBody<{ mode: string; montant?: number; lignesPaiement?: { description: string; montant: number }[] }>(request) || {};
-        if (Array.isArray(body.lignesPaiement) && body.lignesPaiement.length > 0) {
-          const somme = body.lignesPaiement.reduce((s, l) => s + Number(l.montant || 0), 0);
-          const attendu = body.montant ?? facture.ttc;
-          if (Math.abs(somme - Number(attendu)) > 0.01) {
-            return erreur(`La somme des lignes (${somme.toFixed(2)}) doit être égale au montant total (${Number(attendu).toFixed(2)})`);
-          }
-        }
-        facture.statut = "PAYEE";
-        facture.payeeLe = maintenant();
+        const montant = Number(body.montant ?? facture.ttc);
+        if (montant <= 0) return erreur("Le montant doit être supérieur à zéro");
+        const totalPaye = (facture.montantPaye || 0) + montant;
+        facture.montantPaye = totalPaye;
         facture.modePaiement = body.mode || "especes";
+        if (totalPaye >= facture.ttc - 0.01) {
+          facture.statut = "PAYEE";
+          facture.payeeLe = maintenant();
+        }
          // Recu automatique
          const recu: RecuPaiement = {
            id: id(),
@@ -488,7 +487,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
            factureId: facture.id,
            clientId: facture.clientId,
            clientNom: facture.clientNom,
-           montant: facture.ttc,
+           montant,
            date: maintenant(),
            mode: facture.modePaiement || "especes",
            agentId: facture.agentId,
@@ -500,7 +499,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
            id: id(),
            numero: `OP-${Date.now()}`,
            type: "ENCAISSEMENT",
-           montant: facture.ttc,
+           montant,
            libelle: `Paiement facture ${facture.numero} - ${facture.clientNom}`,
             ...(Array.isArray(body.lignesPaiement) && body.lignesPaiement.length ? {
               lignesPaiement: body.lignesPaiement.map((l: any) => ({ description: l.description || "", montant: Number(l.montant || 0) })),
@@ -522,7 +521,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
            caisse = { userId: facture.agentId, solde: 0, creeLe: maintenant(), majLe: maintenant() };
            data.caisses.push(caisse);
          }
-         caisse.solde = (caisse.solde || 0) + facture.ttc;
+         caisse.solde = (caisse.solde || 0) + montant;
          caisse.majLe = maintenant();
       } else if (action === "annuler") {
         if (me.role !== "SUPERVISEUR") return erreur("Seul le superviseur peut annuler un paiement", 403);
@@ -842,24 +841,25 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         if (!facture) return erreur("Facture introuvable", 404);
         if (facture.statut === "PAYEE") return erreur("Facture déjà payée");
         const lignes = Array.isArray(body.lignesPaiement) ? body.lignesPaiement : [];
-        const somme = lignes.reduce((s: number, l: any) => s + Number(l.montant || 0), 0);
-        if (lignes.length === 0) return erreur("Veuillez renseigner les montants par ligne");
-        if (Math.abs(somme - Number(body.montant)) > 0.01) {
-          return erreur(`La somme des lignes (${somme.toFixed(2)}) doit être égale au montant de l'opération (${Number(body.montant).toFixed(2)})`);
-        }
+        const montant = Number(body.montant);
+        if (!(montant > 0)) return erreur("Le montant doit être supérieur à zéro");
         source = "FACTURE";
         refId = facture.id;
         lignesPaiement = lignes.map((l: any) => ({ description: l.description || "", montant: Number(l.montant || 0) }));
 
-        // Marquer facture payée
-        facture.statut = "PAYEE";
-        facture.payeeLe = maintenant();
+        // Encaissement par avance / partiel : on cumule les paiements
+        const totalPaye = (facture.montantPaye || 0) + montant;
+        facture.montantPaye = totalPaye;
         facture.modePaiement = body.mode || "especes";
+        if (totalPaye >= facture.ttc - 0.01) {
+          facture.statut = "PAYEE";
+          facture.payeeLe = maintenant();
+        }
         // Générer reçu
         const recu: RecuPaiement = {
           id: id(), numero: `REC-${Date.now()}`, factureId: facture.id,
           clientId: facture.clientId, clientNom: facture.clientNom,
-          montant: Number(body.montant), date: maintenant(),
+          montant, date: maintenant(),
           mode: body.mode || "especes", agentId: me.id,
         };
         if (!data.recusPaiement) data.recusPaiement = [];

@@ -50,6 +50,7 @@ export interface Facture {
   agentNom: string;
   payeeLe?: string;
   modePaiement?: string;
+  montantPaye?: number;
 }
 
 export interface Devis {
